@@ -1,0 +1,878 @@
+# Linux Server Basics - Interactive Lab
+
+Welcome to the hands-on Linux server basics lab! This interactive guide will teach you essential server administration skills using your Hetzner Ubuntu server.
+
+`This lab assumes you've completed the setup in README.md and are connected to your server via code-server` {{ note }}
+
+---
+
+## Lab Overview
+
+In this lab, you will:
+- Create and manage users
+- Configure the local firewall (UFW)
+- Update and install packages
+- Install and configure nginx web server
+- Test and verify your setup
+- Learn essential troubleshooting commands
+
+`Take your time with each step and read the explanations carefully` {{ tip }}
+
+---
+
+## Part 1: User Management
+
+### Understanding Users
+
+On Linux systems, it's a security best practice to avoid using the `root` account for everyday tasks. Let's create a regular user with administrative privileges.
+
+`Running everything as root is dangerous - a mistake could break your entire system` {{ warning }}
+
+### Check Current User
+
+First, let's verify we're logged in as root:
+
+`whoami` {{ execute }}
+
+`id` {{ execute }}
+
+**Expected Output:**
+- `whoami` should show: `root`
+- `id` should show: `uid=0(root) gid=0(root) groups=0(root)`
+
+### Create a New User
+
+Let's create a user named `student`. Replace `student` with your preferred username if desired:
+
+`adduser student` {{ execute }}
+
+**What happens:**
+- You'll be prompted to set a password (choose a strong one)
+- Enter personal information (optional - can press Enter to skip)
+- Confirm with `Y`
+
+`Make sure to remember the password you set!` {{ warning }}
+
+### Grant Sudo Privileges
+
+The `sudo` command allows regular users to run commands with root privileges. Let's add our user to the `sudo` group:
+
+`usermod -aG sudo student` {{ execute }}
+
+**Command breakdown:**
+- `usermod`: Modify user account
+- `-aG`: Add to supplementary group
+- `sudo`: The group name
+- `student`: The username
+
+### Verify User Creation
+
+Check that the user was created:
+
+`cat /etc/passwd | grep student` {{ execute }}
+
+Check group membership:
+
+`groups student` {{ execute }}
+
+**Expected Output:**
+- Should show: `student : student sudo`
+
+### Test Sudo Access
+
+Switch to the new user and test sudo:
+
+```{{ execute }}
+su - student
+sudo whoami
+```
+
+**What happens:**
+- `su - student`: Switch user to student (enter password when prompted)
+- `sudo whoami`: Run `whoami` with root privileges
+- First sudo command will prompt for password
+- Should output: `root`
+
+### Quiz: User Management
+
+```quiz id="user-sudo"
+Q: What command adds a user to the sudo group?
+A) useradd -G sudo username
+B) usermod -aG sudo username
+C) adduser --sudo username
+D) sudo adduser username
+```
+
+### Return to Root
+
+For the rest of the lab, we'll work as root for simplicity:
+
+`exit` {{ execute }}
+
+`If you see any permission errors, make sure you're back to the root user` {{ tip }}
+
+---
+
+## Part 2: Firewall Configuration with UFW
+
+### Understanding Firewalls
+
+You already have the Hetzner Cloud Firewall running (configured in the console). Now we'll set up UFW (Uncomplicated Firewall) as an additional security layer on the server itself.
+
+`Hetzner Cloud Firewall = External protection; UFW = Internal protection` {{ info }}
+
+### Check UFW Status
+
+`ufw status` {{ execute }}
+
+**Expected Output:**
+- Likely shows: `Status: inactive`
+
+### Important: Allow SSH First!
+
+`CRITICAL: Always allow SSH (port 22) before enabling UFW, or you'll lock yourself out!` {{ danger }}
+
+Allow SSH connections:
+
+`ufw allow 22/tcp comment 'SSH access'` {{ execute }}
+
+### Allow HTTP and HTTPS
+
+We'll need these for the web server we'll install later:
+
+```{{ execute }}
+ufw allow 80/tcp comment 'HTTP web traffic'
+ufw allow 443/tcp comment 'HTTPS web traffic'
+```
+
+### Allow Code-Server Port
+
+Allow access to code-server (port 8080):
+
+`ufw allow 8080/tcp comment 'Code-server'` {{ execute }}
+
+### Review Rules Before Enabling
+
+Let's see what rules we've added:
+
+`ufw show added` {{ execute }}
+
+### Enable UFW
+
+Now we can safely enable the firewall:
+
+`ufw enable` {{ execute }}
+
+**You'll see a warning about disrupting existing SSH connections.** Type `y` and press Enter.
+
+`If you're disconnected, wait a moment and reconnect - port 22 is allowed` {{ tip }}
+
+### Verify Firewall Status
+
+Check that UFW is running with our rules:
+
+`ufw status verbose` {{ execute }}
+
+### Understanding UFW Rules
+
+Check numbered rules:
+
+`ufw status numbered` {{ execute }}
+
+### Delete a Rule (Example - Don't Actually Do This)
+
+`To delete a rule: ufw delete <number>` {{ info }}
+
+`Example: ufw delete 1 (deletes rule #1)` {{ copy }}
+
+### Quiz: UFW Basics
+
+```quiz id="ufw-ssh"
+Q: Why must you allow SSH (port 22) before enabling UFW?
+A) To make SSH faster
+B) To prevent getting locked out of the server
+C) SSH doesn't work with UFW
+D) It's not actually necessary
+```
+
+---
+
+## Part 3: System Updates and Package Management
+
+### Understanding Package Management
+
+Ubuntu uses `apt` (Advanced Package Tool) to install, update, and remove software packages.
+
+`Always update your system before installing new software` {{ tip }}
+
+### Update Package Lists
+
+Download the latest package information:
+
+`apt update` {{ execute }}
+
+**What this does:**
+- Contacts Ubuntu's package repositories
+- Downloads latest package lists
+- Does NOT install anything yet
+
+### Check for Upgradable Packages
+
+See what can be upgraded:
+
+`apt list --upgradable` {{ execute }}
+
+### Upgrade All Packages
+
+Install available updates:
+
+`apt upgrade -y` {{ execute }}
+
+**This may take 2-5 minutes depending on how many packages need updating.**
+
+`The -y flag automatically answers 'yes' to prompts` {{ info }}
+
+### Understanding apt vs apt-get
+
+`apt` is the newer, more user-friendly version of `apt-get`. Both work, but `apt` is recommended for interactive use.
+
+### Search for Packages
+
+Let's search for nginx (web server):
+
+`apt search nginx | grep -E '^nginx' | head -10` {{ execute }}
+
+### View Package Information
+
+Get detailed info about a package:
+
+`apt show nginx` {{ execute }}
+
+### Quiz: Package Management
+
+```quiz id="apt-update"
+Q: What is the difference between 'apt update' and 'apt upgrade'?
+A) They do the same thing
+B) update downloads package lists, upgrade installs updates
+C) update installs updates, upgrade removes old packages
+D) update is for security patches only
+```
+
+---
+
+## Part 4: Installing and Configuring Nginx
+
+### What is Nginx?
+
+Nginx (pronounced "engine-x") is a high-performance web server used by millions of websites worldwide.
+
+### Install Nginx
+
+`apt install nginx -y` {{ execute }}
+
+**Installation takes 30-60 seconds.**
+
+### Verify Installation
+
+Check if nginx is installed:
+
+`nginx -v` {{ execute }}
+
+Check if it's running:
+
+`systemctl status nginx` {{ execute }}
+
+**Expected Output:**
+- Should show `Active: active (running)` in green
+- Press `q` to exit
+
+### Understanding Systemd Services
+
+Systemd manages services (background programs) on Ubuntu. Key commands:
+
+`Common systemd commands for managing services` {{ info }}
+
+```
+systemctl start servicename    # Start a service
+systemctl stop servicename     # Stop a service
+systemctl restart servicename  # Restart a service
+systemctl status servicename   # Check status
+systemctl enable servicename   # Start on boot
+systemctl disable servicename  # Don't start on boot
+``` {{ copy }}
+
+### Check if Nginx is Enabled on Boot
+
+`systemctl is-enabled nginx` {{ execute }}
+
+**Expected Output:** `enabled`
+
+### Test Nginx Locally
+
+Use `curl` to fetch the default nginx page:
+
+`curl localhost` {{ execute }}
+
+**Expected Output:**
+- HTML code for the default nginx welcome page
+- Should see "Welcome to nginx!"
+
+### Test Nginx from Your Browser
+
+Now test from your local machine's browser:
+
+`Open your browser and navigate to: http://YOUR_SERVER_IP` {{ info }}
+
+**Replace YOUR_SERVER_IP with your actual server IP address.**
+
+**Expected Result:**
+- You should see the "Welcome to nginx!" page
+- If not, check your firewall rules (both UFW and Hetzner)
+
+`If you can't access nginx, verify port 80 is open in both UFW and Hetzner firewall` {{ tip }}
+
+### Explore Nginx Configuration
+
+View the main nginx configuration file:
+
+`cat /etc/nginx/nginx.conf` {{ execute }}
+
+View default site configuration:
+
+`cat /etc/nginx/sites-available/default` {{ execute }}
+
+### Nginx Directory Structure
+
+`Key nginx directories to know` {{ info }}
+
+```
+/etc/nginx/                    # Main configuration directory
+/etc/nginx/nginx.conf          # Main configuration file
+/etc/nginx/sites-available/    # Available site configs
+/etc/nginx/sites-enabled/      # Enabled site configs
+/var/www/html/                 # Default web root
+/var/log/nginx/                # Log files
+``` {{ copy }}
+
+### Create a Custom HTML Page
+
+Let's replace the default page with a custom one:
+
+```{{ execute }}
+cat > /var/www/html/index.html << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My First Server</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .success { color: #4ade80; font-weight: bold; }
+        code {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        ul { line-height: 1.8; }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.3);
+            text-align: center;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎉 Congratulations!</h1>
+        <p class="success">✓ Your server is running successfully!</p>
+
+        <h2>What You've Accomplished:</h2>
+        <ul>
+            <li>✓ Created a Hetzner Cloud server</li>
+            <li>✓ Configured Hetzner Cloud Firewall</li>
+            <li>✓ Set up code-server for remote development</li>
+            <li>✓ Created and configured a user account</li>
+            <li>✓ Configured UFW firewall</li>
+            <li>✓ Updated system packages</li>
+            <li>✓ Installed and configured nginx web server</li>
+        </ul>
+
+        <h2>Server Information:</h2>
+        <p><strong>Web Server:</strong> nginx</p>
+        <p><strong>Operating System:</strong> Ubuntu 22.04 LTS</p>
+        <p><strong>Cloud Provider:</strong> Hetzner Cloud</p>
+
+        <h2>What's Next?</h2>
+        <ul>
+            <li>Learn about SSL/TLS certificates (Let's Encrypt)</li>
+            <li>Deploy a real application (Node.js, Python, etc.)</li>
+            <li>Set up a database (MySQL, PostgreSQL)</li>
+            <li>Explore Docker and containers</li>
+            <li>Implement CI/CD pipelines</li>
+        </ul>
+
+        <div class="footer">
+            <p>Server configured with ❤️ using CodeLab</p>
+            <p>Keep learning and building amazing things!</p>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+```
+
+### View Your New Page Locally
+
+`curl localhost` {{ execute }}
+
+### View in Browser
+
+Refresh your browser (http://YOUR_SERVER_IP) to see your new custom page!
+
+`Your custom page should now be displayed with a nice gradient design` {{ tip }}
+
+### Check Nginx Access Logs
+
+See who's been accessing your server:
+
+`tail -20 /var/log/nginx/access.log` {{ execute }}
+
+**You should see:**
+- Your own IP address accessing the site
+- HTTP status codes (200 = success)
+- Timestamps of requests
+
+### Check Nginx Error Logs
+
+`tail -20 /var/log/nginx/error.log` {{ execute }}
+
+`Empty or minimal errors is good!` {{ info }}
+
+### Restart Nginx
+
+Practice restarting the service:
+
+`systemctl restart nginx` {{ execute }}
+
+Verify it's still running:
+
+`systemctl status nginx` {{ execute }}
+
+### Quiz: Nginx Basics
+
+```quiz id="nginx-config"
+Q: Where is the default nginx web root directory?
+A) /etc/nginx/html
+B) /var/www/html
+C) /usr/share/nginx
+D) /home/nginx/www
+```
+
+---
+
+## Part 5: Monitoring and Troubleshooting
+
+### System Resource Monitoring
+
+Check CPU and memory usage:
+
+`top -b -n 1 | head -20` {{ execute }}
+
+Better view with htop:
+
+`htop` {{ execute }}
+
+`In htop, press 'q' to quit` {{ info }}
+
+### Check Disk Usage
+
+View disk space:
+
+`df -h` {{ execute }}
+
+**Output explained:**
+- `Filesystem`: Storage device
+- `Size`: Total size
+- `Used`: Space used
+- `Avail`: Space available
+- `Use%`: Percentage used
+- `Mounted on`: Where it's accessible
+
+### Check Directory Sizes
+
+Find what's using space:
+
+`du -sh /* 2>/dev/null | sort -h` {{ execute }}
+
+### Check Memory Usage
+
+`free -h` {{ execute }}
+
+**Output explained:**
+- `total`: Total RAM
+- `used`: Currently in use
+- `free`: Completely unused
+- `available`: RAM available for new processes
+
+### Check Running Processes
+
+View all processes:
+
+`ps aux | head -20` {{ execute }}
+
+Find nginx processes:
+
+`ps aux | grep nginx` {{ execute }}
+
+### Check Network Connections
+
+View listening ports:
+
+`ss -tulpn` {{ execute }}
+
+**Output explained:**
+- `State`: LISTEN = accepting connections
+- `Local Address:Port`: What the service is listening on
+- `0.0.0.0`: Listening on all interfaces
+- `127.0.0.1`: Localhost only
+
+Find specific port (nginx on 80):
+
+`ss -tulpn | grep :80` {{ execute }}
+
+### Check System Logs
+
+View recent system logs:
+
+`journalctl -n 50 --no-pager` {{ execute }}
+
+Follow logs in real-time (Ctrl+C to stop):
+
+`tail -f /var/log/syslog` {{ copy }}
+
+### Check Nginx Logs in Real-Time
+
+Monitor access log:
+
+`tail -f /var/log/nginx/access.log` {{ copy }}
+
+`Open your website in a browser and watch the log update in real-time!` {{ tip }}
+
+### System Information
+
+View system details:
+
+`hostnamectl` {{ execute }}
+
+View kernel and OS info:
+
+`uname -a` {{ execute }}
+
+Check system uptime:
+
+`uptime` {{ execute }}
+
+---
+
+## Part 6: Essential Commands Reference
+
+### File Operations
+
+`Essential file management commands` {{ info }}
+
+```
+ls -la          # List files with details
+cd /path        # Change directory
+pwd             # Print working directory
+cat file        # View file contents
+less file       # View file with pagination
+head -n 20 file # View first 20 lines
+tail -n 20 file # View last 20 lines
+nano file       # Edit file (beginner-friendly)
+vim file        # Edit file (advanced)
+``` {{ copy }}
+
+### File Permissions
+
+```
+chmod 755 file          # Set permissions
+chmod +x file           # Make executable
+chown user:group file   # Change owner
+``` {{ copy }}
+
+### Process Management
+
+```
+ps aux              # View all processes
+top                 # Real-time process view
+htop                # Better process view
+kill PID            # Stop process by ID
+killall name        # Stop process by name
+``` {{ copy }}
+
+### Service Management
+
+```
+systemctl start service     # Start service
+systemctl stop service      # Stop service
+systemctl restart service   # Restart service
+systemctl status service    # Check status
+systemctl enable service    # Auto-start on boot
+systemctl disable service   # Don't auto-start
+``` {{ copy }}
+
+### Network Commands
+
+```
+ip addr             # Show IP addresses
+ping google.com     # Test connectivity
+curl URL            # Fetch URL
+wget URL            # Download file
+ss -tulpn           # Show listening ports
+netstat -tulpn      # Alternative to ss
+``` {{ copy }}
+
+---
+
+## Part 7: Advanced Exercises (Optional)
+
+### Exercise 1: Create a Second Website
+
+Create a new directory and HTML file:
+
+```{{ execute }}
+mkdir -p /var/www/test-site
+cat > /var/www/test-site/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><title>Test Site</title></head>
+<body>
+<h1>This is a test site!</h1>
+<p>Running on the same server, different directory.</p>
+</body>
+</html>
+EOF
+```
+
+### Exercise 2: Check Open Ports
+
+Scan your own server (requires nmap):
+
+`apt install nmap -y` {{ execute }}
+
+`nmap localhost` {{ execute }}
+
+`Only use nmap on servers you own - scanning others without permission is illegal` {{ danger }}
+
+### Exercise 3: Create a Simple Bash Script
+
+```{{ execute }}
+cat > ~/hello.sh << 'EOF'
+#!/bin/bash
+echo "Hello from $HOSTNAME"
+echo "Current time: $(date)"
+echo "Current user: $(whoami)"
+echo "System uptime:"
+uptime
+EOF
+```
+
+Make it executable:
+
+`chmod +x ~/hello.sh` {{ execute }}
+
+Run it:
+
+`~/hello.sh` {{ execute }}
+
+### Exercise 4: Set Up a Cron Job
+
+Edit crontab:
+
+`echo "0 3 * * * apt update && apt upgrade -y" | crontab -` {{ execute }}
+
+View crontab:
+
+`crontab -l` {{ execute }}
+
+`This cron job updates the system daily at 3 AM` {{ info }}
+
+Remove crontab:
+
+`crontab -r` {{ copy }}
+
+---
+
+## Part 8: Cleanup and Shutdown
+
+### Before You Leave
+
+If you're done with the lab and want to save costs:
+
+`Stopping the server in Hetzner console still charges you - you must DELETE it to stop charges` {{ warning }}
+
+### Document What You Learned
+
+Create a notes file:
+
+```{{ execute }}
+cat > ~/lab-notes.txt << 'EOF'
+# My Server Lab Notes
+
+Date: $(date)
+
+## What I Learned:
+- User management with adduser and usermod
+- Firewall configuration with UFW
+- Package management with apt
+- Web server setup with nginx
+- System monitoring commands
+
+## Commands I Should Remember:
+- systemctl status/start/stop/restart
+- apt update && apt upgrade
+- ufw status and ufw allow
+- tail -f for live logs
+- df -h and free -h for resources
+
+## Next Steps:
+- Learn about Docker
+- Set up a database
+- Deploy a real application
+- Configure SSL with Let's Encrypt
+EOF
+```
+
+View your notes:
+
+`cat ~/lab-notes.txt` {{ execute }}
+
+### Delete Server (Optional)
+
+`Only do this if you're completely done and want to stop charges` {{ warning }}
+
+**To delete your server:**
+1. Go to Hetzner Cloud Console
+2. Select your server
+3. Click "Delete"
+4. Confirm deletion
+
+`You can always create a new server and repeat this lab for practice!` {{ tip }}
+
+---
+
+## Congratulations! 🎉
+
+You've completed the Linux Server Basics lab!
+
+### Skills You've Gained:
+
+✅ **User Management**
+- Creating users
+- Managing sudo privileges
+- Switching between users
+
+✅ **Firewall Configuration**
+- Understanding firewall layers
+- Configuring UFW rules
+- Securing server access
+
+✅ **Package Management**
+- Updating system packages
+- Searching and installing software
+- Understanding apt commands
+
+✅ **Web Server Administration**
+- Installing and configuring nginx
+- Creating custom web pages
+- Monitoring access logs
+
+✅ **System Monitoring**
+- Checking resource usage
+- Viewing system logs
+- Troubleshooting issues
+
+### What's Next?
+
+Continue your learning journey with:
+
+1. **SSL/TLS Certificates**
+   - Set up HTTPS with Let's Encrypt
+   - Configure secure connections
+
+2. **Reverse Proxy**
+   - Use nginx as reverse proxy
+   - Host multiple applications
+
+3. **Docker & Containers**
+   - Learn containerization
+   - Deploy containerized apps
+
+4. **Databases**
+   - Install MySQL/PostgreSQL
+   - Basic database administration
+
+5. **Application Deployment**
+   - Deploy Node.js/Python apps
+   - Set up environment variables
+   - Configure process managers (PM2, systemd)
+
+6. **CI/CD Pipelines**
+   - Automate deployments
+   - Use GitHub Actions
+   - Implement testing
+
+7. **Monitoring & Logging**
+   - Set up Prometheus/Grafana
+   - Centralized logging with ELK
+   - Alert configuration
+
+### Keep Learning!
+
+`Practice makes perfect - try deploying your own projects to solidify these skills` {{ tip }}
+
+`Join communities like r/linuxadmin, r/homelab, or DevOps Discord servers` {{ hint }}
+
+---
+
+## Additional Resources
+
+- [Linux Journey](https://linuxjourney.com/) - Interactive Linux tutorials
+- [DigitalOcean Community Tutorials](https://www.digitalocean.com/community/tutorials) - Excellent guides
+- [Nginx Documentation](https://nginx.org/en/docs/) - Official docs
+- [Ubuntu Server Guide](https://ubuntu.com/server/docs) - Comprehensive guide
+- [ExplainShell](https://explainshell.com/) - Understand any command
+
+---
+
+## Quiz Answers
+
+Want to check your quiz answers? Review the concepts in each section!
+
+`Understanding concepts is more important than memorizing answers` {{ tip }}
+
+---
+
+**Thank you for completing this lab!**
+
+If you enjoyed this interactive format, check out more CodeLab materials and create your own `.mdcl` files for personal documentation and learning.
+
+Happy learning and happy coding! 🚀

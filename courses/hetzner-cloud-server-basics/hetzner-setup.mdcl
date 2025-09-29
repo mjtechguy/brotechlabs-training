@@ -1,0 +1,700 @@
+# Hetzner Cloud Server Setup Guide
+
+This interactive guide walks you through setting up your first Hetzner Cloud server with Ubuntu, installing code-server, and preparing for the hands-on lab.
+
+`This guide has executable commands - click the play buttons to run them!` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, make sure you have:
+
+- A Hetzner Cloud account (sign up at [hetzner.com](https://www.hetzner.com))
+- Payment method added to your account
+- SSH key generated on your local machine
+- Basic terminal knowledge
+
+---
+
+## Part 1: Generate SSH Key (Local Machine)
+
+`Run these commands on YOUR LOCAL MACHINE, not on the server!` {{ danger }}
+
+### Check for Existing SSH Keys
+
+`ls -la ~/.ssh` {{ copy }}
+
+If you see `id_ed25519` or `id_rsa`, you already have a key and can skip to viewing it.
+
+### Generate New SSH Key (If Needed)
+
+`ssh-keygen -t ed25519 -C "your_email@example.com"` {{ copy }}
+
+`Replace your_email@example.com with your actual email` {{ info }}
+
+**When prompted:**
+- Press Enter to accept default location
+- Enter a passphrase (optional but recommended)
+- Confirm passphrase
+
+### Display Your Public Key
+
+**On Linux/Mac:**
+
+`cat ~/.ssh/id_ed25519.pub` {{ copy }}
+
+**On Windows (PowerShell):**
+
+`type $env:USERPROFILE\.ssh\id_ed25519.pub` {{ copy }}
+
+`Copy the entire output - you'll paste this into Hetzner` {{ tip }}
+
+---
+
+## Part 2: Create Server in Hetzner Console
+
+`These steps are done in your browser at console.hetzner.cloud` {{ info }}
+
+### Step-by-Step Setup
+
+1. **Log in to Hetzner Cloud Console**
+   - Go to: https://console.hetzner.cloud
+   - Log in with your credentials
+
+2. **Create New Server**
+   - Click "Add Server" button
+
+3. **Configure Server**
+   - **Location**: Choose closest to you (Nuremberg/Ashburn)
+   - **Image**: Ubuntu 22.04 LTS
+   - **Type**: Shared vCPU
+   - **Plan**: CX11 (1 vCPU, 2GB RAM) - ~€4.15/month
+
+4. **Add SSH Key**
+   - Click "Add SSH Key"
+   - Paste your public key from previous step
+   - Give it a name (e.g., "my-laptop")
+
+5. **Name Your Server**
+   - Example: "ubuntu-dev-server"
+
+6. **Create Server**
+   - Click "Create & Buy now"
+   - Wait 30-60 seconds
+
+7. **Note Your IP Address**
+   - Copy the IP address shown in server details
+
+`Your server IP address will be needed for the next steps` {{ warning }}
+
+---
+
+## Part 3: Create and Apply Hetzner Firewall
+
+`Firewalls protect your server from unauthorized access` {{ info }}
+
+### Create Firewall
+
+1. **Go to Firewalls** (left sidebar in Hetzner Console)
+2. **Click "Create Firewall"**
+3. **Name it**: "basic-server-firewall"
+
+### Add Inbound Rules
+
+Add these rules to allow necessary traffic:
+
+**Rule 1: SSH**
+- Protocol: TCP
+- Port: 22
+- Source: 0.0.0.0/0, ::/0
+- Description: SSH access
+
+**Rule 2: HTTP**
+- Protocol: TCP
+- Port: 80
+- Source: 0.0.0.0/0, ::/0
+- Description: HTTP web traffic
+
+**Rule 3: HTTPS**
+- Protocol: TCP
+- Port: 443
+- Source: 0.0.0.0/0, ::/0
+- Description: HTTPS web traffic
+
+**Rule 4: Code-Server**
+- Protocol: TCP
+- Port: 8080
+- Source: 0.0.0.0/0, ::/0
+- Description: Code-server access
+
+### Apply Firewall to Server
+
+1. Go to **Resources** tab in firewall
+2. Click **Apply to Resources**
+3. Select your server
+4. Click **Apply Firewall**
+
+`For production, restrict ports 22 and 8080 to your specific IP address` {{ tip }}
+
+---
+
+## Part 4: Connect to Your Server
+
+### First Connection
+
+Replace `YOUR_SERVER_IP` with your actual IP address:
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+`First time connecting, you'll see a message about host authenticity - type 'yes'` {{ info }}
+
+**If connection fails:**
+- Wait 1-2 minutes (server may still be starting)
+- Verify IP address is correct
+- Check SSH key was added properly in Hetzner
+
+---
+
+## Part 5: Initial Server Setup
+
+`The following commands should be run on your Hetzner server via SSH` {{ note }}
+
+### Update System Packages
+
+First, update the package lists and upgrade installed packages:
+
+`apt update && apt upgrade -y` {{ execute }}
+
+`This may take 2-5 minutes - be patient!` {{ info }}
+
+### Install Essential Tools
+
+`apt install -y curl wget git vim htop ufw` {{ execute }}
+
+**Tools installed:**
+- `curl`, `wget`: Download files
+- `git`: Version control
+- `vim`: Text editor
+- `htop`: Better process viewer
+- `ufw`: Uncomplicated Firewall
+
+### Verify Installation
+
+Check that tools are installed:
+
+```{{ execute }}
+curl --version | head -1
+git --version
+htop --version
+```
+
+---
+
+## Part 6: Install Code-Server
+
+### Download and Install
+
+Run the official installation script:
+
+`curl -fsSL https://code-server.dev/install.sh | sh` {{ execute }}
+
+`Installation takes 1-2 minutes` {{ info }}
+
+### Create Configuration Directory
+
+`mkdir -p ~/.config/code-server` {{ execute }}
+
+### Generate Strong Password
+
+Create a random strong password:
+
+`openssl rand -base64 32` {{ execute }}
+
+`Copy this password - you'll need it to access code-server!` {{ warning }}
+
+### Create Configuration File
+
+Create the config file (you'll edit the password in the next step):
+
+```{{ execute }}
+cat > ~/.config/code-server/config.yaml << 'EOF'
+bind-addr: 0.0.0.0:8080
+auth: password
+password: CHANGEME_USE_GENERATED_PASSWORD
+cert: false
+EOF
+```
+
+### Edit Configuration
+
+Open the config file to set your password:
+
+`nano ~/.config/code-server/config.yaml` {{ execute }}
+
+**In nano:**
+1. Replace `CHANGEME_USE_GENERATED_PASSWORD` with the password generated above
+2. Press `Ctrl+O` to save
+3. Press `Enter` to confirm
+4. Press `Ctrl+X` to exit
+
+`Make sure to use the strong password you generated!` {{ danger }}
+
+### View Configuration
+
+Verify your configuration (your password will be visible):
+
+`cat ~/.config/code-server/config.yaml` {{ execute }}
+
+---
+
+## Part 7: Start Code-Server
+
+### Enable and Start Service
+
+`systemctl enable --now code-server@root` {{ execute }}
+
+**What this does:**
+- `enable`: Start automatically on boot
+- `--now`: Start immediately
+- `@root`: Run as root user
+
+### Verify Code-Server is Running
+
+Check service status:
+
+`systemctl status code-server@root` {{ execute }}
+
+`You should see 'Active: active (running)' in green - press 'q' to exit` {{ tip }}
+
+### Check Listening Port
+
+Verify code-server is listening on port 8080:
+
+`ss -tulpn | grep 8080` {{ execute }}
+
+**Expected output:**
+- Should show `LISTEN` on `*:8080` or `0.0.0.0:8080`
+
+### View Code-Server Logs
+
+Check the logs for any errors:
+
+`journalctl -u code-server@root -n 30 --no-pager` {{ execute }}
+
+---
+
+## Part 8: Access Code-Server
+
+### Open in Browser
+
+`Open your web browser and navigate to:` {{ info }}
+
+`http://YOUR_SERVER_IP:8080` {{ copy }}
+
+`Replace YOUR_SERVER_IP with your actual server IP address!` {{ warning }}
+
+**You should see:**
+- Code-server login page
+- Enter the password from your config file
+- Click "Submit"
+- VS Code interface in your browser!
+
+### Troubleshooting Access Issues
+
+If you can't connect, run these diagnostic commands:
+
+**Check if service is running:**
+
+`systemctl status code-server@root` {{ execute }}
+
+**Check firewall allows port 8080:**
+
+`ufw status` {{ execute }}
+
+**Check if process is listening:**
+
+`ss -tulpn | grep 8080` {{ execute }}
+
+**View recent logs:**
+
+`journalctl -u code-server@root -n 50 --no-pager` {{ execute }}
+
+**Test local access:**
+
+`curl http://localhost:8080` {{ execute }}
+
+`If curl works but browser doesn't, check Hetzner firewall in the console` {{ tip }}
+
+---
+
+## Part 9: Install CodeLab Extension
+
+### Download CodeLab Extension
+
+Download the extension to your server:
+
+`cd ~` {{ execute }}
+
+`wget https://github.com/mjtechguy/codelabv2/releases/download/v1.1.0/codelabv2-1.1.0.vsix` {{ execute }}
+
+### Install Extension via Command Line
+
+`code-server --install-extension ~/codelabv2-1.1.0.vsix` {{ execute }}
+
+### Restart Code-Server
+
+`systemctl restart code-server@root` {{ execute }}
+
+### Verify Installation
+
+Check that extension is installed:
+
+`code-server --list-extensions | grep codelab` {{ execute }}
+
+**Expected output:** Should show `codelabv2` or similar
+
+### Alternative: Install via Browser
+
+If command-line installation doesn't work:
+
+1. Open code-server in your browser
+2. Click Extensions icon (four squares) in left sidebar
+3. Click three dots (...) menu at top
+4. Select "Install from VSIX..."
+5. Navigate to `/root/codelabv2-1.1.0.vsix`
+6. Click Install
+7. Reload window when prompted
+
+---
+
+## Part 10: Set Up Lab Environment
+
+### Create Labs Directory
+
+`mkdir -p ~/labs` {{ execute }}
+
+### Navigate to Labs Directory
+
+`cd ~/labs` {{ execute }}
+
+### Verify Current Directory
+
+`pwd` {{ execute }}
+
+**Expected output:** `/root/labs`
+
+### Download Lab Files
+
+If you have the lab files locally, use SCP to transfer them:
+
+`From your local machine, run:` {{ info }}
+
+`scp server-basics-lab.mdcl root@YOUR_SERVER_IP:/root/labs/` {{ copy }}
+
+### Alternative: Create Files Manually
+
+In code-server:
+1. Click "File" → "Open Folder"
+2. Navigate to `/root/labs`
+3. Click "OK"
+4. Create new file: `server-basics-lab.mdcl`
+5. Copy and paste content from the lab file
+
+### Test CodeLab
+
+Create a simple test file to verify CodeLab works:
+
+```{{ execute }}
+cat > ~/labs/test.mdcl << 'EOF'
+# CodeLab Test
+
+This is a test to verify CodeLab is working.
+
+`echo "Hello from CodeLab!"` {{ execute }}
+
+`date` {{ execute }}
+
+`whoami` {{ execute }}
+EOF
+```
+
+### Open Test File in Code-Server
+
+**In code-server browser interface:**
+
+1. Open folder: `/root/labs`
+2. Click on `test.mdcl` file
+3. CodeLab preview should open on the right
+4. Click the play buttons to execute commands!
+
+`If preview doesn't open automatically, press Ctrl+Shift+P and search for 'CodeLab: Open Preview'` {{ tip }}
+
+---
+
+## Part 11: Verify Everything is Working
+
+### Run System Check
+
+Run these commands to verify your setup:
+
+**Check OS version:**
+
+`cat /etc/os-release | grep PRETTY_NAME` {{ execute }}
+
+**Check server resources:**
+
+`free -h` {{ execute }}
+
+`df -h` {{ execute }}
+
+**Check code-server status:**
+
+`systemctl is-active code-server@root` {{ execute }}
+
+**List installed extensions:**
+
+`code-server --list-extensions` {{ execute }}
+
+### Checklist
+
+Verify all these are complete:
+
+- [ ] Server created on Hetzner
+- [ ] Hetzner firewall configured and applied
+- [ ] SSH connection working
+- [ ] System packages updated
+- [ ] Code-server installed and running
+- [ ] Code-server accessible in browser
+- [ ] CodeLab extension installed
+- [ ] Labs directory created
+
+`If everything is working, you're ready for the main lab!` {{ info }}
+
+---
+
+## Part 12: Open the Main Lab
+
+### In Code-Server:
+
+1. Make sure folder `/root/labs` is open
+2. Open file: `server-basics-lab.mdcl`
+3. CodeLab preview should open automatically
+4. Follow the interactive lab instructions!
+
+`The lab will teach you user management, firewall configuration, package management, and nginx setup` {{ tip }}
+
+---
+
+## Additional Information
+
+### Managing Code-Server
+
+**Start code-server:**
+
+`systemctl start code-server@root` {{ execute }}
+
+**Stop code-server:**
+
+`systemctl stop code-server@root` {{ execute }}
+
+**Restart code-server:**
+
+`systemctl restart code-server@root` {{ execute }}
+
+**View logs:**
+
+`journalctl -u code-server@root -f` {{ copy }}
+
+`Press Ctrl+C to stop following logs` {{ info }}
+
+### Changing Code-Server Password
+
+Edit the config:
+
+`nano ~/.config/code-server/config.yaml` {{ execute }}
+
+Change the password, save, and restart:
+
+`systemctl restart code-server@root` {{ execute }}
+
+### Security Considerations
+
+`For learning purposes, we're using simple authentication` {{ info }}
+
+**For production servers:**
+- Use HTTPS with proper SSL certificates
+- Restrict access by IP address in firewall
+- Use SSH tunneling or VPN (like Tailscale)
+- Create dedicated user instead of using root
+- Enable automatic security updates
+
+### Cost Management
+
+**Your server costs approximately:**
+- CX11: ~€0.006/hour (~€4.15/month)
+- Charged while server exists, even if powered off
+- To stop charges: DELETE the server (not just power off)
+
+`Deleting the server removes all data permanently!` {{ danger }}
+
+### Delete Server
+
+**When you're done learning:**
+
+1. Go to Hetzner Cloud Console
+2. Select your server
+3. Click "Delete"
+4. Confirm deletion
+
+`You can recreate the server anytime using this guide!` {{ tip }}
+
+---
+
+## Troubleshooting Common Issues
+
+### Can't Connect via SSH
+
+**Check server status in Hetzner Console:**
+- Server should be "Running" with green indicator
+
+**Verify SSH key:**
+
+`ssh-add -l` {{ copy }}
+
+**Try verbose SSH:**
+
+`ssh -v root@YOUR_SERVER_IP` {{ copy }}
+
+### Code-Server Not Accessible
+
+**Check if running:**
+
+`systemctl status code-server@root` {{ execute }}
+
+**Check firewall:**
+
+`ufw status` {{ execute }}
+
+**Restart service:**
+
+`systemctl restart code-server@root` {{ execute }}
+
+**Check config:**
+
+`cat ~/.config/code-server/config.yaml` {{ execute }}
+
+### CodeLab Not Working
+
+**Verify extension installed:**
+
+`code-server --list-extensions` {{ execute }}
+
+**Reinstall extension:**
+
+`code-server --install-extension ~/codelabv2-1.1.0.vsix --force` {{ execute }}
+
+**Restart code-server:**
+
+`systemctl restart code-server@root` {{ execute }}
+
+### Server Running Slow
+
+- Upgrade to larger plan (CX21/CPX21)
+- Choose datacenter closer to you
+- Check resource usage with `htop`
+
+---
+
+## Congratulations! 🎉
+
+Your server is now fully set up and ready for learning!
+
+### What You've Accomplished:
+
+✅ Created a Hetzner Cloud server
+✅ Configured Hetzner Cloud Firewall
+✅ Connected via SSH
+✅ Updated system packages
+✅ Installed code-server
+✅ Configured code-server with password
+✅ Installed CodeLab extension
+✅ Set up labs directory
+
+### Next Steps:
+
+1. **Start the main lab**: Open `server-basics-lab.mdcl`
+2. **Learn interactively**: Follow the hands-on exercises
+3. **Build projects**: Deploy your own applications
+4. **Explore more**: Docker, databases, CI/CD
+
+`Have fun learning! Click the play buttons to run commands and experiment freely.` {{ tip }}
+
+---
+
+## Quick Command Reference
+
+### Server Management
+
+```
+# System updates
+apt update && apt upgrade -y
+
+# Reboot server
+reboot
+
+# Check system info
+uname -a
+hostnamectl
+
+# Resource usage
+htop
+df -h
+free -h
+``` {{ copy }}
+
+### Code-Server Management
+
+```
+# Service control
+systemctl start code-server@root
+systemctl stop code-server@root
+systemctl restart code-server@root
+systemctl status code-server@root
+
+# View logs
+journalctl -u code-server@root -f
+
+# Config location
+nano ~/.config/code-server/config.yaml
+``` {{ copy }}
+
+### Useful Commands
+
+```
+# Current directory
+pwd
+
+# List files
+ls -la
+
+# Disk usage
+df -h
+
+# Memory usage
+free -h
+
+# Processes
+ps aux
+htop
+
+# Network connections
+ss -tulpn
+
+# System logs
+journalctl -n 50
+``` {{ copy }}
+
+---
+
+**Ready to learn? Open `server-basics-lab.mdcl` and start your journey!** 🚀
