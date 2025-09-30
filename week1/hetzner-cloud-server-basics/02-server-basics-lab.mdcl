@@ -2,7 +2,7 @@
 
 Welcome to the hands-on Linux server basics lab! This interactive guide will teach you essential server administration skills using your Hetzner Ubuntu server.
 
-`This lab assumes you've completed the setup in README.md and are connected to your server via code-server` {{ note }}
+`This lab assumes you've completed the setup in 01-hetzner-setup.mdcl and are connected to your server via code-server` {{ note }}
 
 ---
 
@@ -10,7 +10,6 @@ Welcome to the hands-on Linux server basics lab! This interactive guide will tea
 
 In this lab, you will:
 - Create and manage users
-- Configure the local firewall (UFW)
 - Update and install packages
 - Install and configure nginx web server
 - Test and verify your setup
@@ -113,91 +112,7 @@ For the rest of the lab, we'll work as root for simplicity:
 
 ---
 
-## Part 2: Firewall Configuration with UFW
-
-### Understanding Firewalls
-
-You already have the Hetzner Cloud Firewall running (configured in the console). Now we'll set up UFW (Uncomplicated Firewall) as an additional security layer on the server itself.
-
-`Hetzner Cloud Firewall = External protection; UFW = Internal protection` {{ info }}
-
-### Check UFW Status
-
-`ufw status` {{ execute }}
-
-**Expected Output:**
-- Likely shows: `Status: inactive`
-
-### Important: Allow SSH First!
-
-`CRITICAL: Always allow SSH (port 22) before enabling UFW, or you'll lock yourself out!` {{ danger }}
-
-Allow SSH connections:
-
-`ufw allow 22/tcp comment 'SSH access'` {{ execute }}
-
-### Allow HTTP and HTTPS
-
-We'll need these for the web server we'll install later:
-
-```{{ execute }}
-ufw allow 80/tcp comment 'HTTP web traffic'
-ufw allow 443/tcp comment 'HTTPS web traffic'
-```
-
-### Allow Code-Server Port
-
-Allow access to code-server (port 8080):
-
-`ufw allow 8080/tcp comment 'Code-server'` {{ execute }}
-
-### Review Rules Before Enabling
-
-Let's see what rules we've added:
-
-`ufw show added` {{ execute }}
-
-### Enable UFW
-
-Now we can safely enable the firewall:
-
-`ufw enable` {{ execute }}
-
-**You'll see a warning about disrupting existing SSH connections.** Type `y` and press Enter.
-
-`If you're disconnected, wait a moment and reconnect - port 22 is allowed` {{ tip }}
-
-### Verify Firewall Status
-
-Check that UFW is running with our rules:
-
-`ufw status verbose` {{ execute }}
-
-### Understanding UFW Rules
-
-Check numbered rules:
-
-`ufw status numbered` {{ execute }}
-
-### Delete a Rule (Example - Don't Actually Do This)
-
-`To delete a rule: ufw delete <number>` {{ info }}
-
-`Example: ufw delete 1 (deletes rule #1)` {{ copy }}
-
-### Quiz: UFW Basics
-
-```quiz id="ufw-ssh"
-Q: Why must you allow SSH (port 22) before enabling UFW?
-A) To make SSH faster
-B) To prevent getting locked out of the server
-C) SSH doesn't work with UFW
-D) It's not actually necessary
-```
-
----
-
-## Part 3: System Updates and Package Management
+## Part 2: System Updates and Package Management
 
 ### Understanding Package Management
 
@@ -260,7 +175,7 @@ D) update is for security patches only
 
 ---
 
-## Part 4: Installing and Configuring Nginx
+## Part 3: Installing and Configuring Nginx
 
 ### What is Nginx?
 
@@ -292,14 +207,17 @@ Systemd manages services (background programs) on Ubuntu. Key commands:
 
 `Common systemd commands for managing services` {{ info }}
 
-```
-systemctl start servicename    # Start a service
-systemctl stop servicename     # Stop a service
-systemctl restart servicename  # Restart a service
-systemctl status servicename   # Check status
-systemctl enable servicename   # Start on boot
-systemctl disable servicename  # Don't start on boot
-``` {{ copy }}
+`systemctl start servicename` {{ copy }}
+
+`systemctl stop servicename` {{ copy }}
+
+`systemctl restart servicename` {{ copy }}
+
+`systemctl status servicename` {{ copy }}
+
+`systemctl enable servicename` {{ copy }}
+
+`systemctl disable servicename` {{ copy }}
 
 ### Check if Nginx is Enabled on Boot
 
@@ -327,9 +245,9 @@ Now test from your local machine's browser:
 
 **Expected Result:**
 - You should see the "Welcome to nginx!" page
-- If not, check your firewall rules (both UFW and Hetzner)
+- If not, check your Hetzner firewall settings
 
-`If you can't access nginx, verify port 80 is open in both UFW and Hetzner firewall` {{ tip }}
+`If you can't access nginx, verify port 80 is open in the Hetzner firewall (already configured in setup)` {{ tip }}
 
 ### Explore Nginx Configuration
 
@@ -345,20 +263,27 @@ View default site configuration:
 
 `Key nginx directories to know` {{ info }}
 
-```
-/etc/nginx/                    # Main configuration directory
-/etc/nginx/nginx.conf          # Main configuration file
-/etc/nginx/sites-available/    # Available site configs
-/etc/nginx/sites-enabled/      # Enabled site configs
-/var/www/html/                 # Default web root
-/var/log/nginx/                # Log files
-``` {{ copy }}
+- `/etc/nginx/` - Main configuration directory
+- `/etc/nginx/nginx.conf` - Main configuration file
+- `/etc/nginx/sites-available/` - Available site configs
+- `/etc/nginx/sites-enabled/` - Enabled site configs
+- `/var/www/html/` - Default web root
+- `/var/log/nginx/` - Log files
 
 ### Create a Custom HTML Page
 
 Let's replace the default page with a custom one:
 
-```{{ execute }}
+`This command uses a "heredoc" (here document) to create a file with multiple lines of content in one command` {{ info }}
+
+**Command breakdown:**
+- `cat >` - Write output to a file
+- `/var/www/html/index.html` - The file to create (nginx's web root)
+- `<< 'EOF'` - Start heredoc (everything until EOF becomes file content)
+- Content between EOF markers becomes the HTML file
+- `EOF` - End heredoc
+
+```html{{ execute }}
 cat > /var/www/html/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
@@ -488,7 +413,7 @@ D) /home/nginx/www
 
 ---
 
-## Part 5: Monitoring and Troubleshooting
+## Part 4: Monitoring and Troubleshooting
 
 ### System Resource Monitoring
 
@@ -592,67 +517,81 @@ Check system uptime:
 
 ---
 
-## Part 6: Essential Commands Reference
+## Part 5: Essential Commands Reference
 
 ### File Operations
 
 `Essential file management commands` {{ info }}
 
-```
-ls -la          # List files with details
-cd /path        # Change directory
-pwd             # Print working directory
-cat file        # View file contents
-less file       # View file with pagination
-head -n 20 file # View first 20 lines
-tail -n 20 file # View last 20 lines
-nano file       # Edit file (beginner-friendly)
-vim file        # Edit file (advanced)
-``` {{ copy }}
+`ls -la` {{ copy }}
+
+`cd /path` {{ copy }}
+
+`pwd` {{ copy }}
+
+`cat file` {{ copy }}
+
+`less file` {{ copy }}
+
+`head -n 20 file` {{ copy }}
+
+`tail -n 20 file` {{ copy }}
+
+`nano file` {{ copy }}
+
+`vim file` {{ copy }}
 
 ### File Permissions
 
-```
-chmod 755 file          # Set permissions
-chmod +x file           # Make executable
-chown user:group file   # Change owner
-``` {{ copy }}
+`chmod 755 file` {{ copy }}
+
+`chmod +x file` {{ copy }}
+
+`chown user:group file` {{ copy }}
 
 ### Process Management
 
-```
-ps aux              # View all processes
-top                 # Real-time process view
-htop                # Better process view
-kill PID            # Stop process by ID
-killall name        # Stop process by name
-``` {{ copy }}
+`ps aux` {{ copy }}
+
+`top` {{ copy }}
+
+`htop` {{ copy }}
+
+`kill PID` {{ copy }}
+
+`killall name` {{ copy }}
 
 ### Service Management
 
-```
-systemctl start service     # Start service
-systemctl stop service      # Stop service
-systemctl restart service   # Restart service
-systemctl status service    # Check status
-systemctl enable service    # Auto-start on boot
-systemctl disable service   # Don't auto-start
-``` {{ copy }}
+`systemctl start service` {{ copy }}
+
+`systemctl stop service` {{ copy }}
+
+`systemctl restart service` {{ copy }}
+
+`systemctl status service` {{ copy }}
+
+`systemctl enable service` {{ copy }}
+
+`systemctl disable service` {{ copy }}
 
 ### Network Commands
 
-```
-ip addr             # Show IP addresses
-ping google.com     # Test connectivity
-curl URL            # Fetch URL
-wget URL            # Download file
-ss -tulpn           # Show listening ports
-netstat -tulpn      # Alternative to ss
-``` {{ copy }}
+`ip addr` {{ copy }}
+
+`ping google.com` {{ copy }}
+
+`curl URL` {{ copy }}
+
+`wget URL` {{ copy }}
+
+`ss -tulpn` {{ copy }}
+
+`netstat -tulpn` {{ copy }}
 
 ---
 
-## Part 7: Advanced Exercises (Optional)
+## Part 6: Advanced Exercises (Optional)
 
 ### Exercise 1: Create a Second Website
 
@@ -721,7 +660,7 @@ Remove crontab:
 
 ---
 
-## Part 8: Cleanup and Shutdown
+## Part 7: Cleanup and Shutdown
 
 ### Before You Leave
 
@@ -789,11 +728,6 @@ You've completed the Linux Server Basics lab!
 - Creating users
 - Managing sudo privileges
 - Switching between users
-
-✅ **Firewall Configuration**
-- Understanding firewall layers
-- Configuring UFW rules
-- Securing server access
 
 ✅ **Package Management**
 - Updating system packages

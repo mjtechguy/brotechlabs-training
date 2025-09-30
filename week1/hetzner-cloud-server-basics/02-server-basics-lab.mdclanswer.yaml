@@ -1,0 +1,24 @@
+version: "1.0"
+
+answers:
+  user-sudo:
+    correct: "B"
+    explanation: "The command 'usermod -aG sudo username' adds a user to the sudo group. The -a flag appends to existing groups, and -G specifies the supplementary group to add."
+    alternatives: ["b", "usermod -aG sudo username"]
+    caseSensitive: false
+
+  apt-update:
+    correct: "B"
+    explanation: "'apt update' downloads the latest package lists from repositories, while 'apt upgrade' actually installs the available updates for installed packages."
+    alternatives: ["b", "update downloads package lists, upgrade installs updates"]
+    caseSensitive: false
+
+  nginx-config:
+    correct: "B"
+    explanation: "The default nginx web root directory is /var/www/html. This is where nginx looks for index.html and other web files to serve."
+    alternatives: ["b", "/var/www/html"]
+    caseSensitive: false
+
+settings:
+  showExplanations: true
+  allowRetry: true

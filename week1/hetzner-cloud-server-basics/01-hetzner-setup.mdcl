@@ -636,65 +636,80 @@ Your server is now fully set up and ready for learning!
 
 ### Server Management
 
-```
-# System updates
-apt update && apt upgrade -y
+**System updates:**
 
-# Reboot server
-reboot
+`apt update && apt upgrade -y` {{ copy }}
 
-# Check system info
-uname -a
-hostnamectl
+**Reboot server:**
 
-# Resource usage
-htop
-df -h
-free -h
-``` {{ copy }}
+`reboot` {{ copy }}
+
+**Check system info:**
+
+`uname -a` {{ copy }}
+
+`hostnamectl` {{ copy }}
+
+**Resource usage:**
+
+`htop` {{ copy }}
+
+`df -h` {{ copy }}
+
+`free -h` {{ copy }}
 
 ### Code-Server Management
 
-```
-# Service control
-systemctl start code-server@root
-systemctl stop code-server@root
-systemctl restart code-server@root
-systemctl status code-server@root
+**Service control:**
 
-# View logs
-journalctl -u code-server@root -f
+`systemctl start code-server@root` {{ copy }}
 
-# Config location
-nano ~/.config/code-server/config.yaml
-``` {{ copy }}
+`systemctl stop code-server@root` {{ copy }}
+
+`systemctl restart code-server@root` {{ copy }}
+
+`systemctl status code-server@root` {{ copy }}
+
+**View logs:**
+
+`journalctl -u code-server@root -f` {{ copy }}
+
+**Config location:**
+
+`nano ~/.config/code-server/config.yaml` {{ copy }}
 
 ### Useful Commands
 
-```
-# Current directory
-pwd
+**Current directory:**
 
-# List files
-ls -la
+`pwd` {{ copy }}
 
-# Disk usage
-df -h
+**List files:**
 
-# Memory usage
-free -h
+`ls -la` {{ copy }}
 
-# Processes
-ps aux
-htop
+**Disk usage:**
 
-# Network connections
-ss -tulpn
+`df -h` {{ copy }}
 
-# System logs
-journalctl -n 50
-``` {{ copy }}
+**Memory usage:**
+
+`free -h` {{ copy }}
+
+**Processes:**
+
+`ps aux` {{ copy }}
+
+`htop` {{ copy }}
+
+**Network connections:**
+
+`ss -tulpn` {{ copy }}
+
+**System logs:**
+
+`journalctl -n 50` {{ copy }}
 
 ---
 
-**Ready to learn? Open `server-basics-lab.mdcl` and start your journey!** 🚀
+**Ready to learn? Open `02-server-basics-lab.mdcl` and start your journey!** 🚀
