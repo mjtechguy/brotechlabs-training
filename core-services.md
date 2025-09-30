@@ -268,6 +268,51 @@ These are common accounts you will be using throughout the training. Make sure y
 
 ---
 
+### Authy by Twilio - [authy.com](https://authy.com)
+
+**What it is:** Multi-device 2FA authenticator app with encrypted backups and device syncing for securing accounts
+
+**How to Sign Up:**
+1. Visit [authy.com](https://authy.com) and download the app for your device
+2. Install and open the Authy app
+3. Enter your phone number with country code
+4. Choose verification method (SMS or voice call)
+5. Enter the verification code received
+6. Set up your backup password (IMPORTANT - remember this!)
+7. Optionally enable multi-device support
+8. Start adding 2FA accounts
+
+**Key Features:**
+- **Encrypted cloud backup**: Restore 2FA tokens on new devices
+- **Multi-device sync**: Access 2FA codes on phone, tablet, and desktop
+- **Offline access**: Generate codes without internet connection
+- **Push authentication**: One-tap approval for supported services
+- **Backup password protection**: Extra layer of security for your tokens
+
+**Important Security Notes:**
+- **Backup password is critical**: Cannot be reset if forgotten
+- **Phone number required**: Used for account recovery
+- **Enable app protection**: Use PIN, fingerprint, or face ID
+- **Review trusted devices regularly**: Remove old/unused devices
+
+**Supported Platforms:**
+- iOS (iPhone/iPad)
+- Android
+- Windows Desktop
+- macOS Desktop
+- Linux Desktop (via Snap)
+- Chrome Extension
+
+**Migration from SMS 2FA:**
+- More secure than SMS-based 2FA
+- Protected against SIM swapping attacks
+- Works when traveling internationally
+- No cell service required for codes
+
+**Cost:** Free for personal use
+
+---
+
 ### Bitwarden - [bitwarden.com](https://bitwarden.com)
 
 **What it is:** Open-source password manager for storing and managing credentials securely across devices
@@ -498,6 +543,7 @@ Use this checklist to track which accounts you've created:
 
 ### Security
 - [ ] Tailscale - Free for personal use (3 users, 100 devices)
+- [ ] Authy - Free 2FA authenticator with cloud backup
 - [ ] Bitwarden - **Create this first!** Store all other passwords here
 
 ### Development
