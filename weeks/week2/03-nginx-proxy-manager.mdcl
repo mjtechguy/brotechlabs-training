@@ -1,0 +1,922 @@
+# Deploying Nginx Proxy Manager with Docker
+
+In this lab, you'll deploy Nginx Proxy Manager (NPM) using Docker Compose. NPM will serve as your reverse proxy, handling SSL certificates and routing traffic to your applications.
+
+`Nginx Proxy Manager provides a web interface for managing Nginx as a reverse proxy` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, ensure:
+
+- ✅ Ubuntu server with Docker installed (from previous labs)
+- ✅ Docker Compose installed and working
+- ✅ Ports 80, 443, and 81 open in firewall
+- ✅ Custom Docker network created (nginx-proxy-network)
+- ✅ Domain name purchased (we'll configure DNS later)
+
+---
+
+## Part 1: Understanding Nginx Proxy Manager
+
+### What We're Deploying
+
+**Nginx Proxy Manager (NPM)** = Web-based UI for managing Nginx reverse proxy
+
+**What It Does:**
+- Routes traffic based on domain names
+- Handles SSL/TLS certificates automatically
+- Provides Let's Encrypt integration
+- Web-based management (no config file editing)
+
+### NPM Architecture
+
+```
+Internet (Port 80, 443)
+         ↓
+Nginx Proxy Manager Container
+  ├── Port 80 → HTTP (redirects to HTTPS)
+  ├── Port 443 → HTTPS (SSL termination)
+  └── Port 81 → Admin Panel
+         ↓
+Routes to Backend Containers
+  └── code-server, other apps
+```
+
+### Ports NPM Uses
+
+- **Port 80**: HTTP traffic (auto-redirects to HTTPS)
+- **Port 443**: HTTPS traffic (SSL/TLS)
+- **Port 81**: NPM admin web interface
+
+`Port 81 is only for initial setup and management` {{ info }}
+
+---
+
+## Part 2: Create Project Directory
+
+### Navigate to Docker Directory
+
+`cd ~/docker` {{ execute }}
+
+### Create NPM Directory
+
+`mkdir -p nginx-proxy-manager && cd nginx-proxy-manager` {{ execute }}
+
+### Verify Current Directory
+
+`pwd` {{ execute }}
+
+**Expected output:** `/root/docker/nginx-proxy-manager`
+
+---
+
+## Part 3: Create Docker Compose File
+
+### Understanding the Compose Configuration
+
+We'll create a `docker-compose.yml` file that defines:
+- NPM container configuration
+- Port mappings
+- Volume mounts for persistent data
+- Network settings
+- Restart policy
+
+### Create Docker Compose File
+
+```{{ execute }}
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS
+      - "81:81"      # Admin Web Interface
+    environment:
+      # MySQL/MariaDB connection (NPM uses internal SQLite by default)
+      # Uncomment below if you want to use external database
+      # DB_MYSQL_HOST: "db"
+      # DB_MYSQL_PORT: 3306
+      # DB_MYSQL_USER: "npm"
+      # DB_MYSQL_PASSWORD: "npm"
+      # DB_MYSQL_NAME: "npm"
+
+      # Disable IPV6 (optional, uncomment if you have IPv6 issues)
+      # DISABLE_IPV6: 'true'
+
+      # Default admin user will be:
+      # Email: admin@example.com
+      # Password: changeme
+      # ⚠️ CHANGE THIS ON FIRST LOGIN!
+      X_FRAME_OPTIONS: "sameorigin"
+
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+    networks:
+      - nginx-proxy-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:81"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  nginx-proxy-network:
+    external: true
+
+volumes:
+  npm-data:
+    driver: local
+  npm-letsencrypt:
+    driver: local
+EOF
+```
+
+`This file defines our complete NPM deployment configuration` {{ info }}
+
+### View the Compose File
+
+`cat docker-compose.yml` {{ execute }}
+
+---
+
+## Part 4: Understanding the Configuration
+
+### Service Definition
+
+**Image:** `jc21/nginx-proxy-manager:latest`
+- Official NPM image from Docker Hub
+- `latest` tag = most recent stable version
+
+**Container Name:** `nginx-proxy-manager`
+- Easy to identify and reference
+- Used in `docker` commands
+
+**Restart Policy:** `unless-stopped`
+- Automatically restarts if it crashes
+- Starts on server boot
+- Won't restart if manually stopped
+
+### Port Mappings
+
+```yaml
+ports:
+  - "80:80"      # HOST:CONTAINER
+  - "443:443"
+  - "81:81"
+```
+
+**Format:** `HOST_PORT:CONTAINER_PORT`
+- Left side: Port on your server
+- Right side: Port inside container
+
+### Volumes (Data Persistence)
+
+```yaml
+volumes:
+  - npm-data:/data
+  - npm-letsencrypt:/etc/letsencrypt
+```
+
+**npm-data:**
+- NPM database (SQLite)
+- Proxy host configurations
+- Access lists
+- User accounts
+
+**npm-letsencrypt:**
+- SSL/TLS certificates from Let's Encrypt
+- Certificate keys
+- ACME account information
+
+`Volumes persist data even if container is removed` {{ tip }}
+
+### Network Configuration
+
+```yaml
+networks:
+  - nginx-proxy-network
+```
+
+**external: true** means:
+- Network already exists (we created it earlier)
+- Other containers on same network can communicate
+- Containers can reach each other by name
+
+### Health Check
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:81"]
+  interval: 30s
+```
+
+**Purpose:**
+- Docker checks if NPM is healthy
+- Tests admin panel accessibility
+- Automatic restart if unhealthy
+
+---
+
+## Part 5: Deploy Nginx Proxy Manager
+
+### Pull the NPM Image
+
+`docker compose pull` {{ execute }}
+
+**What this does:**
+- Downloads NPM image from Docker Hub
+- Verifies image integrity
+- Takes 1-2 minutes depending on connection
+
+### Start NPM Container
+
+`docker compose up -d` {{ execute }}
+
+**Flags explained:**
+- `up`: Start services defined in compose file
+- `-d`: Detached mode (runs in background)
+
+**What happens:**
+1. Creates volumes (if not exist)
+2. Creates container from image
+3. Applies configuration
+4. Starts container
+5. Returns to prompt
+
+`Container is now running in the background` {{ info }}
+
+### Verify Container is Running
+
+`docker compose ps` {{ execute }}
+
+**Expected output:**
+```
+NAME                    STATUS          PORTS
+nginx-proxy-manager     Up X seconds    0.0.0.0:80-81->80-81/tcp, 0.0.0.0:443->443/tcp
+```
+
+**Status should be:** `Up` or `Up (healthy)`
+
+### Alternative Verification
+
+`docker ps | grep nginx-proxy-manager` {{ execute }}
+
+---
+
+## Part 6: Check NPM Logs
+
+### View Container Logs
+
+`docker compose logs` {{ execute }}
+
+**Look for:**
+- No error messages
+- "Started" or "Ready" messages
+- Database initialization complete
+
+### Follow Logs in Real-Time
+
+`docker compose logs -f` {{ execute }}
+
+`Press Ctrl+C to stop following logs` {{ info }}
+
+### Check Specific Log Lines
+
+View last 50 lines:
+
+`docker compose logs --tail=50` {{ execute }}
+
+View logs from last 5 minutes:
+
+`docker compose logs --since 5m` {{ execute }}
+
+---
+
+## Part 7: Verify NPM Services
+
+### Check If Ports Are Listening
+
+`ss -tulpn | grep -E ':80|:443|:81'` {{ execute }}
+
+**Expected output:**
+```
+tcp   LISTEN   0.0.0.0:80       docker-proxy
+tcp   LISTEN   0.0.0.0:443      docker-proxy
+tcp   LISTEN   0.0.0.0:81       docker-proxy
+```
+
+### Test HTTP Port (80)
+
+`curl -I http://localhost:80` {{ execute }}
+
+**Expected:** Connection or redirect response
+
+### Test HTTPS Port (443)
+
+`curl -Ik https://localhost:443` {{ execute }}
+
+**Expected:** SSL handshake or connection response
+
+### Test Admin Port (81)
+
+`curl -I http://localhost:81` {{ execute }}
+
+**Expected:** HTTP 200 or redirect
+
+---
+
+## Part 8: Access NPM Admin Panel
+
+### Get Your Server IP
+
+`hostname -I | awk '{print $1}'` {{ execute }}
+
+**Copy this IP address**
+
+### Access NPM in Browser
+
+`Open your web browser and navigate to:` {{ info }}
+
+`http://YOUR_SERVER_IP:81` {{ copy }}
+
+**Replace YOUR_SERVER_IP with your actual server IP**
+
+**Example:** `http://123.45.67.89:81`
+
+`You should see the Nginx Proxy Manager login page` {{ tip }}
+
+### Default Login Credentials
+
+**Email:** `admin@example.com` {{ copy }}
+
+**Password:** `changeme` {{ copy }}
+
+`⚠️ You MUST change these credentials immediately after first login!` {{ danger }}
+
+---
+
+## Part 9: First-Time Login and Setup
+
+### Step 1: Login with Default Credentials
+
+1. Navigate to `http://YOUR_SERVER_IP:81`
+2. Enter email: `admin@example.com`
+3. Enter password: `changeme`
+4. Click **Sign In**
+
+### Step 2: Change Default Credentials
+
+**You'll be immediately prompted to change:**
+
+**New Details:**
+- **Email:** Your email address
+- **First Name:** Your name
+- **Last Name:** Your last name (optional)
+- **Password:** Strong password (at least 12 characters)
+- **Confirm Password:** Same password
+
+`Use a strong, unique password and save it in a password manager!` {{ warning }}
+
+### Step 3: Explore NPM Dashboard
+
+After login, you'll see:
+- **Dashboard**: Overview of proxy hosts, SSL certificates
+- **Proxy Hosts**: Where you'll configure domain routing
+- **SSL Certificates**: Manage Let's Encrypt certificates
+- **Access Lists**: Password protection for sites
+- **Streams**: TCP/UDP proxy (advanced)
+- **404 Hosts**: Custom 404 pages
+- **Users**: Manage admin users
+
+`Familiarize yourself with the interface - we'll use it extensively` {{ tip }}
+
+---
+
+## Part 10: Verify NPM Health
+
+### Check Container Health Status
+
+`docker inspect nginx-proxy-manager | grep -A 5 '"Health"'` {{ execute }}
+
+**Look for:**
+- `"Status": "healthy"`
+
+### Check Resource Usage
+
+`docker stats nginx-proxy-manager --no-stream` {{ execute }}
+
+**Monitor:**
+- CPU %
+- Memory usage
+- Network I/O
+
+`NPM is lightweight - usually uses <100MB RAM` {{ info }}
+
+### Check Container Uptime
+
+`docker ps | grep nginx-proxy-manager` {{ execute }}
+
+**Status column shows uptime:** `Up 5 minutes (healthy)`
+
+---
+
+## Part 11: Understanding NPM Data Persistence
+
+### Inspect NPM Volumes
+
+`docker volume ls | grep npm` {{ execute }}
+
+**You should see:**
+- `npm-data`
+- `npm-letsencrypt`
+
+### Inspect Data Volume
+
+`docker volume inspect npm-data` {{ execute }}
+
+**Note the "Mountpoint":** This is where data is stored on host
+
+**Example:** `/var/lib/docker/volumes/npm-data/_data`
+
+### View NPM Configuration Files
+
+`ls -la $(docker volume inspect npm-data --format '{{ .Mountpoint }}')` {{ execute }}
+
+**You should see:**
+- `database.sqlite` - NPM's database
+- `logs/` - Log directory
+- `nginx/` - Nginx configurations
+- Other config files
+
+`Don't manually edit these files - use NPM web interface` {{ warning }}
+
+---
+
+## Part 12: Test NPM Reverse Proxy (Basic)
+
+### Create Test Backend Container
+
+For testing, let's deploy a simple web server:
+
+```{{ execute }}
+docker run -d \
+  --name test-backend \
+  --network nginx-proxy-network \
+  -p 8888:80 \
+  nginx:alpine
+```
+
+**What this does:**
+- Creates nginx container named `test-backend`
+- Connects to `nginx-proxy-network`
+- Accessible at port 8888 on host
+- Accessible by name on Docker network
+
+### Verify Test Container
+
+`docker ps | grep test-backend` {{ execute }}
+
+### Test Direct Access
+
+`curl http://localhost:8888 | head -5` {{ execute }}
+
+**Expected:** Nginx welcome page HTML
+
+`This container is accessible directly. Next, we'll route it through NPM.` {{ info }}
+
+### Note for Later
+
+We'll configure NPM to proxy this container in the DNS/NPM configuration lab.
+
+**For now, keep the test container running:**
+
+`docker ps | grep test-backend` {{ execute }}
+
+---
+
+## Part 13: NPM Container Management
+
+### Stop NPM
+
+`docker compose stop` {{ execute }}
+
+### Start NPM
+
+`docker compose start` {{ execute }}
+
+### Restart NPM
+
+`docker compose restart` {{ execute }}
+
+### View NPM Logs After Restart
+
+`docker compose logs --tail=30` {{ execute }}
+
+### Stop and Remove NPM (Don't Do This Yet!)
+
+`docker compose down` {{ copy }}
+
+`This stops and removes the container, but volumes persist` {{ info }}
+
+### Recreate NPM (If Needed)
+
+`docker compose up -d` {{ copy }}
+
+`Data is preserved in volumes, so your config survives container recreation` {{ tip }}
+
+---
+
+## Part 14: NPM Backup Strategy
+
+### Backup NPM Volumes
+
+Create backup directory:
+
+`mkdir -p ~/backups/npm` {{ execute }}
+
+Backup NPM data:
+
+```{{ execute }}
+docker run --rm \
+  -v nginx-proxy-manager_npm-data:/source:ro \
+  -v ~/backups/npm:/backup \
+  ubuntu \
+  tar czf /backup/npm-data-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+```
+
+Backup Let's Encrypt certificates:
+
+```{{ execute }}
+docker run --rm \
+  -v nginx-proxy-manager_npm-letsencrypt:/source:ro \
+  -v ~/backups/npm:/backup \
+  ubuntu \
+  tar czf /backup/npm-letsencrypt-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+```
+
+### List Backups
+
+`ls -lh ~/backups/npm/` {{ execute }}
+
+### Backup Docker Compose File
+
+`cp docker-compose.yml ~/backups/npm/docker-compose.yml.backup` {{ execute }}
+
+`Regular backups are essential - automate this with cron!` {{ tip }}
+
+---
+
+## Part 15: Troubleshooting NPM
+
+### NPM Container Won't Start
+
+**Check logs:**
+
+`docker compose logs` {{ execute }}
+
+**Common issues:**
+- Port already in use (80, 443, or 81)
+- Permission issues with volumes
+- Network doesn't exist
+
+**Check port conflicts:**
+
+`ss -tulpn | grep -E ':80|:443|:81'` {{ execute }}
+
+### Can't Access NPM Admin Panel
+
+**Verify container is running:**
+
+`docker compose ps` {{ execute }}
+
+**Check if port 81 is open in firewall:**
+
+`ufw status | grep 81` {{ execute }}
+
+**Test locally:**
+
+`curl -I http://localhost:81` {{ execute }}
+
+**Check Hetzner firewall:**
+- Go to Hetzner Cloud Console
+- Verify port 81 is allowed
+
+### NPM Shows as Unhealthy
+
+**Check health status:**
+
+`docker inspect nginx-proxy-manager | grep -A 10 Health` {{ execute }}
+
+**Restart NPM:**
+
+`docker compose restart` {{ execute }}
+
+**If still unhealthy, check logs:**
+
+`docker compose logs --tail=100` {{ execute }}
+
+### Forgot Admin Password
+
+**Reset to default:**
+
+1. Stop NPM:
+   `docker compose down` {{ copy }}
+
+2. Remove NPM data volume:
+   `docker volume rm nginx-proxy-manager_npm-data` {{ copy }}
+
+3. Recreate container:
+   `docker compose up -d` {{ copy }}
+
+4. Login with default credentials:
+   - Email: `admin@example.com`
+   - Password: `changeme`
+
+`This deletes all proxy hosts and configurations!` {{ danger }}
+
+### SSL Certificate Issues
+
+**View certificate volume:**
+
+`docker volume inspect nginx-proxy-manager_npm-letsencrypt` {{ execute }}
+
+**Check certificate files:**
+
+```{{ execute }}
+ls -la $(docker volume inspect nginx-proxy-manager_npm-letsencrypt --format '{{ .Mountpoint }}')
+```
+
+**Restart NPM to retry certificate issuance:**
+
+`docker compose restart` {{ execute }}
+
+---
+
+## Part 16: NPM Security Hardening
+
+### Change Default Admin Port (Optional)
+
+Edit `docker-compose.yml`:
+
+`nano docker-compose.yml` {{ execute }}
+
+Change port mapping from:
+```yaml
+- "81:81"
+```
+
+To custom port (example: 9090):
+```yaml
+- "9090:81"
+```
+
+Save and restart:
+
+`docker compose up -d` {{ execute }}
+
+`Access admin panel at YOUR_SERVER_IP:9090` {{ info }}
+
+### Restrict Admin Access to IP (UFW)
+
+If you have a static IP, restrict port 81:
+
+`ufw delete allow 81/tcp` {{ copy }}
+
+`ufw allow from YOUR_IP_ADDRESS to any port 81 proto tcp` {{ copy }}
+
+**Replace YOUR_IP_ADDRESS with your actual IP**
+
+### Use SSH Tunnel for Admin Access (Most Secure)
+
+Instead of exposing port 81, use SSH tunnel:
+
+1. Remove port 81 from compose file
+2. Access via SSH tunnel from local machine:
+
+`ssh -L 8081:localhost:81 root@YOUR_SERVER_IP` {{ copy }}
+
+3. Access NPM at: `http://localhost:8081`
+
+`This is the most secure method - no port exposed to internet` {{ tip }}
+
+---
+
+## Part 17: NPM Maintenance
+
+### Update NPM to Latest Version
+
+Pull latest image:
+
+`docker compose pull` {{ execute }}
+
+Recreate container with new image:
+
+`docker compose up -d` {{ execute }}
+
+Verify new version:
+
+`docker inspect nginx-proxy-manager | grep -i version` {{ execute }}
+
+### Clean Up Old Images
+
+List all images:
+
+`docker images | grep nginx-proxy-manager` {{ execute }}
+
+Remove old images:
+
+`docker image prune -a` {{ execute }}
+
+### Monitor NPM Performance
+
+Real-time stats:
+
+`docker stats nginx-proxy-manager` {{ execute }}
+
+`Press Ctrl+C to stop monitoring` {{ info }}
+
+### View Nginx Error Logs (If Needed)
+
+`docker exec nginx-proxy-manager cat /data/logs/error.log` {{ execute }}
+
+---
+
+## Part 18: Prepare for Next Steps
+
+### Verify NPM is Ready
+
+Run this comprehensive check:
+
+```{{ execute }}
+echo "=== NPM Deployment Checklist ==="
+echo ""
+echo -n "NPM container running: "
+docker ps | grep -q nginx-proxy-manager && echo "✓ Yes" || echo "✗ No"
+echo -n "NPM healthy: "
+[ "$(docker inspect nginx-proxy-manager --format='{{.State.Health.Status}}')" = "healthy" ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Port 80 listening: "
+ss -tulpn | grep -q ":80 " && echo "✓ Yes" || echo "✗ No"
+echo -n "Port 443 listening: "
+ss -tulpn | grep -q ":443 " && echo "✓ Yes" || echo "✗ No"
+echo -n "Port 81 listening: "
+ss -tulpn | grep -q ":81 " && echo "✓ Yes" || echo "✗ No"
+echo -n "Admin panel accessible: "
+curl -s -o /dev/null -w "%{http_code}" http://localhost:81 | grep -q "200\|30" && echo "✓ Yes" || echo "✗ No"
+echo -n "Volumes exist: "
+[ $(docker volume ls | grep -c npm) -eq 2 ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Test backend running: "
+docker ps | grep -q test-backend && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "If all items show ✓, you're ready for code-server deployment!"
+```
+
+### Document Your NPM Setup
+
+```{{ execute }}
+cat > ~/npm-setup-info.txt << EOF
+# Nginx Proxy Manager Setup Information
+Date: $(date)
+
+## Access Information
+Admin Panel: http://$(hostname -I | awk '{print $1}'):81
+Admin Email: (your email)
+Admin Password: (stored in password manager)
+
+## Container Information
+Container Name: nginx-proxy-manager
+Image: jc21/nginx-proxy-manager:latest
+Network: nginx-proxy-network
+
+## Volumes
+Data: nginx-proxy-manager_npm-data
+Certificates: nginx-proxy-manager_npm-letsencrypt
+
+## Ports
+80: HTTP
+443: HTTPS
+81: Admin Panel
+
+## Useful Commands
+Start: docker compose -f ~/docker/nginx-proxy-manager/docker-compose.yml start
+Stop: docker compose -f ~/docker/nginx-proxy-manager/docker-compose.yml stop
+Logs: docker compose -f ~/docker/nginx-proxy-manager/docker-compose.yml logs -f
+Restart: docker compose -f ~/docker/nginx-proxy-manager/docker-compose.yml restart
+
+## Next Steps
+1. Deploy code-server
+2. Configure DNS records
+3. Create proxy host in NPM
+4. Request SSL certificate
+EOF
+```
+
+View your notes:
+
+`cat ~/npm-setup-info.txt` {{ execute }}
+
+---
+
+## Summary
+
+Congratulations! Nginx Proxy Manager is now deployed and running.
+
+### What We Accomplished:
+
+✅ **NPM Deployment**
+- Created Docker Compose configuration
+- Deployed NPM container
+- Configured ports (80, 443, 81)
+- Set up persistent volumes
+
+✅ **NPM Configuration**
+- Accessed admin panel
+- Changed default credentials
+- Explored NPM interface
+- Verified health status
+
+✅ **Testing**
+- Deployed test backend container
+- Verified NPM functionality
+- Tested port accessibility
+
+✅ **Maintenance Setup**
+- Backup strategy
+- Update procedure
+- Troubleshooting guide
+
+### Current Architecture:
+
+```
+Internet
+    ↓
+Ports 80, 443, 81 (Open in Firewall)
+    ↓
+Nginx Proxy Manager Container
+    ↓
+nginx-proxy-network (Docker Network)
+    ↓
+test-backend container (ready for proxying)
+```
+
+### Next Steps:
+
+1. **Deploy Code-Server** → `04-code-server-docker.mdcl`
+2. **Configure DNS** → Point domain to server
+3. **Configure NPM** → Create proxy hosts and SSL certificates
+4. **Access securely** → HTTPS-enabled code-server
+
+---
+
+## Quick Reference
+
+### NPM Management Commands
+
+```bash
+# Navigate to NPM directory
+cd ~/docker/nginx-proxy-manager
+
+# Start NPM
+docker compose up -d
+
+# Stop NPM
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# Restart NPM
+docker compose restart
+
+# Check status
+docker compose ps
+
+# Update NPM
+docker compose pull
+docker compose up -d
+
+# Backup NPM data
+docker run --rm \
+  -v nginx-proxy-manager_npm-data:/source:ro \
+  -v ~/backups/npm:/backup \
+  ubuntu \
+  tar czf /backup/npm-data-$(date +%Y%m%d).tar.gz -C /source .
+```
+
+### Access Information
+
+- **Admin Panel:** `http://YOUR_SERVER_IP:81`
+- **Default Email:** `admin@example.com`
+- **Default Password:** `changeme` (CHANGE THIS!)
+
+---
+
+**NPM is ready to route traffic! Let's deploy Code-Server next! 🔄**

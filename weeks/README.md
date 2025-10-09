@@ -24,7 +24,25 @@ Week 1 provides foundational IT knowledge combined with hands-on cloud server ad
 
 ---
 
-## Week 2: [Coming Soon]
+## Week 2: Secure Domain-Based Deployment with Docker & Nginx Proxy Manager
+
+Week 2 builds on foundational knowledge to create a production-ready, secure web infrastructure. Students learn domain management, DNS configuration, containerization with Docker, reverse proxy setup, and SSL/TLS certificate automation. By the end, you'll have a fully HTTPS-secured development environment accessible via your own domain name.
+
+**What You'll Learn**: Domain name registration and management • DNS fundamentals (A records, nameservers, propagation) • Cloudflare DNS configuration • Docker Engine and containerization concepts • Docker Compose for multi-container orchestration • Docker volumes and networks • Reverse proxy architecture and benefits • Nginx Proxy Manager web interface • SSL/TLS certificates and encryption • Let's Encrypt and ACME protocol • Certificate auto-renewal • Code-server deployment in Docker • Secure remote development setup • Production deployment best practices • Backup strategies for containerized applications
+
+**Hands-On Labs**: Purchase domain name (Namecheap) • Configure Cloudflare as DNS provider • Deploy Hetzner server with Docker • Install Docker Engine and Docker Compose • Deploy Nginx Proxy Manager (ports 80, 443, 81) • Deploy code-server in Docker container • Create DNS A records in Cloudflare • Configure NPM proxy hosts with domain routing • Request and auto-renew Let's Encrypt SSL certificates • Access code-server securely via HTTPS (https://code.yourdomain.com) • Implement backup procedures for Docker volumes
+
+**Lab Format**: 5 interactive CodeLab (.mdcl) files with executable commands, UI-based configuration guides, architecture diagrams, and comprehensive troubleshooting
+
+**Time Commitment**: 4-6 hours reading + 3-5 hours hands-on labs
+
+**Tools Used**: Namecheap (domain) • Cloudflare (DNS) • Hetzner Cloud • Ubuntu 22.04 LTS • Docker & Docker Compose • Nginx Proxy Manager • Let's Encrypt • Code-server
+
+**Prerequisites**: Completed Week 1 or equivalent knowledge • Domain name budget ($1-15/year) • Hetzner account (~€4/month server) • Basic understanding of web architecture
+
+**Start Here**: Read `week2/week2-topics.md` for in-depth concepts, then follow labs: `01-ubuntu-server-prep.mdcl` → `02-install-docker.mdcl` → `03-nginx-proxy-manager.mdcl` → `04-code-server-docker.mdcl` → `05-dns-and-npm-config.mdcl`
+
+**Summary**: Check `week2/week1-summary.md` for Week 1 recap with key concepts and links
 
 ---
 

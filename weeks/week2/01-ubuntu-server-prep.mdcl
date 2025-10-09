@@ -1,0 +1,727 @@
+# Ubuntu Server Preparation for Docker Deployment
+
+Welcome to Week 2! In this lab, we'll prepare your Ubuntu server for Docker deployment by updating the system, configuring security, and installing essential tools.
+
+`This guide assumes you have a fresh Hetzner Ubuntu 22.04 server. If you're using your Week 1 server, you can skip some steps.` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, ensure you have:
+
+- ✅ Hetzner Cloud server running Ubuntu 24.04 LTS
+- ✅ SSH access to the server
+- ✅ Root or sudo privileges
+- ✅ Domain name purchased (we'll configure DNS later)
+
+---
+
+## Part 1: Initial Connection and Verification
+
+### Connect to Your Server
+
+Replace `YOUR_SERVER_IP` with your actual server IP address:
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+`If this is a new server, you'll be prompted to accept the host key. Type 'yes' and press Enter.` {{ info }}
+
+### Verify System Information
+
+Check the operating system version:
+
+`cat /etc/os-release` {{ execute }}
+
+**Expected output:** Ubuntu 22.04 LTS
+
+Check current user:
+
+`whoami` {{ execute }}
+
+**Expected output:** `root`
+
+Check hostname:
+
+`hostname` {{ execute }}
+
+### Update System Hostname (Optional)
+
+Set a meaningful hostname for your server:
+
+`hostnamectl set-hostname docker-server` {{ execute }}
+
+Verify the change:
+
+`hostname` {{ execute }}
+
+`The hostname helps identify your server in logs and prompts` {{ tip }}
+
+---
+
+## Part 2: System Updates
+
+### Update Package Lists
+
+Download the latest package information:
+
+`apt update` {{ execute }}
+
+**What this does:**
+- Contacts Ubuntu package repositories
+- Downloads latest package lists
+- Prepares for upgrades
+
+### Upgrade All Packages
+
+Install available updates:
+
+`apt upgrade -y` {{ execute }}
+
+`This may take 2-5 minutes depending on available updates` {{ info }}
+
+### Clean Up Old Packages
+
+Remove unnecessary packages:
+
+`apt autoremove -y` {{ execute }}
+
+Clean package cache:
+
+`apt autoclean` {{ execute }}
+
+### Check for Reboot Requirement
+
+Some updates require a reboot:
+
+`[ -f /var/run/reboot-required ] && echo "Reboot required" || echo "No reboot needed"` {{ execute }}
+
+If reboot is required:
+
+`reboot` {{ copy }}
+
+`Wait 1-2 minutes after reboot, then reconnect via SSH` {{ warning }}
+
+---
+
+## Part 3: Install Essential Tools
+
+### Install Core Utilities
+
+`apt install -y curl wget git vim nano htop net-tools ufw` {{ execute }}
+
+**Tools installed:**
+- `curl`, `wget`: Download files and make HTTP requests
+- `git`: Version control
+- `vim`, `nano`: Text editors
+- `htop`: Better process viewer
+- `net-tools`: Network utilities (ifconfig, netstat)
+- `ufw`: Uncomplicated Firewall
+
+### Install Additional Utilities
+
+`apt install -y software-properties-common apt-transport-https ca-certificates gnupg lsb-release` {{ execute }}
+
+**Tools installed:**
+- `software-properties-common`: Manage PPAs
+- `apt-transport-https`: HTTPS support for apt
+- `ca-certificates`: SSL certificate verification
+- `gnupg`: Encryption and signing
+- `lsb-release`: LSB version reporting
+
+### Verify Installations
+
+Check curl version:
+
+`curl --version | head -1` {{ execute }}
+
+Check git version:
+
+`git --version` {{ execute }}
+
+Check if htop is available:
+
+`which htop` {{ execute }}
+
+**Expected output:** `/usr/bin/htop`
+
+---
+
+## Part 4: Configure Firewall (UFW)
+
+### Understanding UFW
+
+**UFW (Uncomplicated Firewall)** is a user-friendly firewall for Ubuntu.
+
+`We're configuring UFW in addition to Hetzner's Cloud Firewall for defense in depth` {{ info }}
+
+### Check Current Status
+
+`ufw status` {{ execute }}
+
+**Expected output:** `Status: inactive`
+
+### Set Default Policies
+
+Deny all incoming traffic by default:
+
+`ufw default deny incoming` {{ execute }}
+
+Allow all outgoing traffic:
+
+`ufw default allow outgoing` {{ execute }}
+
+### Allow SSH (Critical!)
+
+`IMPORTANT: Allow SSH BEFORE enabling UFW, or you'll lock yourself out!` {{ danger }}
+
+`ufw allow 22/tcp comment 'SSH'` {{ execute }}
+
+### Allow HTTP and HTTPS
+
+`ufw allow 80/tcp comment 'HTTP'` {{ execute }}
+
+`ufw allow 443/tcp comment 'HTTPS'` {{ execute }}
+
+### Allow NPM Admin Panel (Port 81)
+
+`ufw allow 81/tcp comment 'NPM Admin'` {{ execute }}
+
+`In production, you should restrict port 81 to specific IPs or use SSH tunneling` {{ warning }}
+
+### Enable UFW
+
+`ufw enable` {{ execute }}
+
+When prompted, type `y` and press Enter.
+
+### Verify Firewall Rules
+
+`ufw status verbose` {{ execute }}
+
+**Expected output:**
+```
+Status: active
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW       Anywhere                  # SSH
+80/tcp                     ALLOW       Anywhere                  # HTTP
+443/tcp                     ALLOW       Anywhere                  # HTTPS
+81/tcp                     ALLOW       Anywhere                  # NPM Admin
+```
+
+---
+
+## Part 5: Configure Time Synchronization
+
+### Why Time Sync Matters
+
+Accurate time is critical for:
+- SSL/TLS certificates (time validation)
+- Log timestamps
+- Scheduled tasks
+- Security protocols
+
+### Check Current Time
+
+`timedatectl` {{ execute }}
+
+### Install NTP (Network Time Protocol)
+
+Ubuntu 22.04 uses systemd-timesyncd by default, but let's verify:
+
+`systemctl status systemd-timesyncd` {{ execute }}
+
+### Set Timezone (if needed)
+
+List available timezones:
+
+`timedatectl list-timezones | grep -i america` {{ copy }}
+
+Set your timezone (example: America/New_York):
+
+`timedatectl set-timezone America/New_York` {{ copy }}
+
+**Replace `America/New_York` with your timezone**
+
+Verify the change:
+
+`timedatectl` {{ execute }}
+
+### Enable Time Synchronization
+
+`timedatectl set-ntp true` {{ execute }}
+
+Verify NTP is active:
+
+`timedatectl show-timesync --all` {{ execute }}
+
+---
+
+## Part 6: Security Hardening
+
+### Create Non-Root User (Recommended)
+
+`For production, always use a non-root user with sudo privileges` {{ info }}
+
+Create a new user (replace `dockeruser` with your preferred username):
+
+`adduser dockeruser` {{ copy }}
+
+`You'll be prompted to set a password and enter user information` {{ note }}
+
+Add user to sudo group:
+
+`usermod -aG sudo dockeruser` {{ copy }}
+
+Verify user creation:
+
+`id dockeruser` {{ execute }}
+
+### Configure SSH Key Authentication (If Not Already Done)
+
+From your local machine, copy your SSH key to the new user:
+
+`ssh-copy-id dockeruser@YOUR_SERVER_IP` {{ copy }}
+
+`Replace YOUR_SERVER_IP with your server's IP address` {{ warning }}
+
+Test SSH login with new user:
+
+`ssh dockeruser@YOUR_SERVER_IP` {{ copy }}
+
+### Disable Root SSH Login (Optional, Recommended for Production)
+
+`Only do this after confirming SSH key access works with your non-root user!` {{ danger }}
+
+Edit SSH configuration:
+
+`nano /etc/ssh/sshd_config` {{ copy }}
+
+Find and change:
+```
+PermitRootLogin yes
+```
+
+To:
+```
+PermitRootLogin no
+```
+
+Save and exit (Ctrl+O, Enter, Ctrl+X)
+
+Restart SSH service:
+
+`systemctl restart sshd` {{ copy }}
+
+`For this lab, you can skip disabling root login for simplicity` {{ tip }}
+
+---
+
+## Part 7: System Resource Check
+
+### Check Disk Space
+
+`df -h` {{ execute }}
+
+**What to look for:**
+- Root filesystem (/) should have at least 5GB free
+- Look for "Use%" - should be under 80%
+
+### Check Memory
+
+`free -h` {{ execute }}
+
+**What to look for:**
+- Total RAM (should match your server spec)
+- Available memory
+
+### Check CPU
+
+`lscpu | grep -E 'Model name|CPU\(s\)|Thread'` {{ execute }}
+
+### Check System Load
+
+`uptime` {{ execute }}
+
+**What to look for:**
+- Load averages should be below number of CPU cores
+- Example: 1 CPU server, load should be < 1.0
+
+### Interactive Resource Monitor
+
+`htop` {{ execute }}
+
+`Press 'q' to quit htop` {{ info }}
+
+**In htop:**
+- Green bars: Used resources
+- Blue bars: Buffers/cache
+- F10 or 'q': Quit
+
+---
+
+## Part 8: Configure Automatic Security Updates (Optional)
+
+### Install Unattended Upgrades
+
+`apt install -y unattended-upgrades` {{ execute }}
+
+### Enable Automatic Security Updates
+
+`dpkg-reconfigure -plow unattended-upgrades` {{ execute }}
+
+Select **Yes** when prompted.
+
+### Verify Configuration
+
+`cat /etc/apt/apt.conf.d/20auto-upgrades` {{ execute }}
+
+**Expected output:**
+```
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+```
+
+`This automatically installs security updates. For production, review changes before auto-applying.` {{ tip }}
+
+---
+
+## Part 9: Prepare Directories for Docker
+
+### Create Docker-Related Directories
+
+Create directories for Docker data and configurations:
+
+`mkdir -p ~/docker/{nginx-proxy-manager,code-server,portainer}` {{ execute }}
+
+Create a shared network configuration directory:
+
+`mkdir -p ~/docker/shared` {{ execute }}
+
+### Verify Directory Structure
+
+`tree ~/docker -L 2` {{ execute }}
+
+If `tree` is not installed:
+
+`apt install -y tree` {{ execute }}
+
+Then run the tree command again.
+
+**Expected structure:**
+```
+/root/docker
+├── code-server
+├── nginx-proxy-manager
+├── portainer
+└── shared
+```
+
+### Set Permissions (If Using Non-Root User)
+
+If you created a non-root user and want them to manage Docker:
+
+`chown -R dockeruser:dockeruser ~/docker` {{ copy }}
+
+---
+
+## Part 10: System Information Summary
+
+### Generate System Report
+
+Create a simple system information script:
+
+```{{ execute }}
+cat > ~/system-info.sh << 'EOF'
+#!/bin/bash
+echo "=== System Information ==="
+echo ""
+echo "Hostname: $(hostname)"
+echo "OS: $(lsb_release -d | cut -f2)"
+echo "Kernel: $(uname -r)"
+echo ""
+echo "=== CPU ==="
+lscpu | grep -E 'Model name|CPU\(s\):'
+echo ""
+echo "=== Memory ==="
+free -h | grep -E 'Mem:|Swap:'
+echo ""
+echo "=== Disk ==="
+df -h / | grep -v Filesystem
+echo ""
+echo "=== Network ==="
+ip -4 addr show | grep inet | grep -v 127.0.0.1
+echo ""
+echo "=== Firewall ==="
+ufw status | head -10
+echo ""
+echo "=== Time ==="
+timedatectl | grep -E 'Local time|Time zone|NTP'
+EOF
+```
+
+Make it executable:
+
+`chmod +x ~/system-info.sh` {{ execute }}
+
+Run the system information script:
+
+`~/system-info.sh` {{ execute }}
+
+---
+
+## Part 11: Final Verification
+
+### Check All Installed Tools
+
+Run these quick checks:
+
+**Check curl:**
+
+`curl --version | head -1` {{ execute }}
+
+**Check git:**
+
+`git --version` {{ execute }}
+
+**Check Docker preparation directories:**
+
+`ls -la ~/docker` {{ execute }}
+
+**Check firewall:**
+
+`ufw status | grep -E '80|443|81|22'` {{ execute }}
+
+**Check time sync:**
+
+`timedatectl | grep "NTP service"` {{ execute }}
+
+**Check system updates:**
+
+`apt list --upgradable 2>/dev/null | wc -l` {{ execute }}
+
+**Expected output:** `0` or `1` (just the header line)
+
+### Test Internet Connectivity
+
+Test DNS resolution and internet access:
+
+`curl -I https://google.com` {{ execute }}
+
+**Expected output:** Should see HTTP response headers (200 OK)
+
+Test Docker Hub connectivity (we'll need this soon):
+
+`curl -I https://hub.docker.com` {{ execute }}
+
+---
+
+## Part 12: Document Your Server Configuration
+
+### Create Configuration Notes
+
+Document your server setup:
+
+```{{ execute }}
+cat > ~/server-config.txt << EOF
+# Server Configuration Notes
+Date: $(date)
+
+## Server Details
+Hostname: $(hostname)
+IP Address: $(hostname -I | awk '{print $1}')
+OS: $(lsb_release -d | cut -f2)
+
+## Firewall Rules
+$(ufw status numbered)
+
+## Time Configuration
+Timezone: $(timedatectl | grep "Time zone" | awk '{print $3}')
+NTP: $(timedatectl | grep "NTP service" | awk '{print $3}')
+
+## Installed Tools
+- Docker: (to be installed in next lab)
+- Git: $(git --version)
+- Curl: $(curl --version | head -1)
+
+## Next Steps
+1. Install Docker
+2. Install Docker Compose
+3. Deploy Nginx Proxy Manager
+4. Deploy Code-Server
+5. Configure DNS and SSL
+
+## Domain Information
+Domain: (to be configured)
+DNS Provider: Cloudflare
+Nameservers: (to be configured)
+
+## Docker Services (Planned)
+- Nginx Proxy Manager (ports 80, 443, 81)
+- Code-Server (internal port 8080)
+EOF
+```
+
+View your configuration notes:
+
+`cat ~/server-config.txt` {{ execute }}
+
+---
+
+## Troubleshooting
+
+### Can't Connect After Enabling Firewall
+
+If you lose SSH connection after enabling UFW:
+
+**From Hetzner Console (VNC/noVNC):**
+
+1. Access server via Hetzner Cloud Console (Actions → Console)
+2. Login as root
+3. Check firewall: `ufw status`
+4. Allow SSH: `ufw allow 22/tcp`
+5. Try reconnecting via SSH
+
+### Time Sync Not Working
+
+Check NTP status:
+
+`systemctl status systemd-timesyncd` {{ execute }}
+
+Restart time sync:
+
+`systemctl restart systemd-timesyncd` {{ execute }}
+
+Force sync:
+
+`timedatectl set-ntp false && timedatectl set-ntp true` {{ execute }}
+
+### Disk Space Issues
+
+Check what's using space:
+
+`du -sh /* 2>/dev/null | sort -h | tail -10` {{ execute }}
+
+Clean package cache:
+
+`apt clean && apt autoclean` {{ execute }}
+
+Remove old kernels (if safe):
+
+`apt autoremove --purge` {{ execute }}
+
+### Permission Issues
+
+Fix ownership of Docker directory:
+
+`chown -R $USER:$USER ~/docker` {{ execute }}
+
+---
+
+## Part 13: Pre-Docker Checklist
+
+Before proceeding to Docker installation, verify:
+
+- [ ] System is fully updated
+- [ ] Firewall is configured (ports 22, 80, 443, 81 open)
+- [ ] Time synchronization is enabled
+- [ ] Essential tools are installed
+- [ ] Directories are created for Docker
+- [ ] Internet connectivity is working
+- [ ] System has sufficient resources (disk space, RAM)
+
+### Verification Command
+
+Run this comprehensive check:
+
+```{{ execute }}
+echo "=== Pre-Docker Checklist ==="
+echo ""
+echo -n "System updated: "
+[ $(apt list --upgradable 2>/dev/null | wc -l) -le 1 ] && echo "✓ Yes" || echo "✗ No (run apt upgrade)"
+echo -n "Firewall configured: "
+[ $(ufw status | grep -c "80/tcp") -ge 1 ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Time sync enabled: "
+[ $(timedatectl | grep -c "NTP service: active") -ge 1 ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Docker directory created: "
+[ -d ~/docker ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Internet connectivity: "
+curl -s -o /dev/null -w "%{http_code}" https://google.com | grep -q 200 && echo "✓ Yes" || echo "✗ No"
+echo -n "Disk space available: "
+[ $(df / | awk 'NR==2 {print $4}') -gt 5000000 ] && echo "✓ Yes (>5GB)" || echo "✗ No (<5GB)"
+echo ""
+echo "If all items show ✓, you're ready for Docker installation!"
+```
+
+---
+
+## Summary
+
+Congratulations! Your Ubuntu server is now prepared for Docker deployment.
+
+### What We Accomplished:
+
+✅ **System Updates**
+- Updated all packages to latest versions
+- Configured automatic security updates
+
+✅ **Security Configuration**
+- Configured UFW firewall
+- Opened necessary ports (22, 80, 443, 81)
+- Optional: Created non-root user
+
+✅ **Essential Tools**
+- Installed curl, wget, git, vim, nano, htop
+- Installed Docker prerequisites
+
+✅ **System Configuration**
+- Set correct timezone
+- Enabled NTP time synchronization
+- Created Docker directories
+
+✅ **Documentation**
+- Created system information script
+- Documented server configuration
+
+### Next Steps:
+
+1. **Install Docker** → Proceed to `02-install-docker.mdcl`
+2. **Deploy Nginx Proxy Manager** → `03-nginx-proxy-manager.mdcl`
+3. **Deploy Code-Server** → `04-code-server-docker.mdcl`
+4. **Configure DNS and SSL** → `05-dns-and-npm-config.mdcl`
+
+---
+
+## Quick Reference Commands
+
+### System Management
+```bash
+apt update && apt upgrade -y    # Update system
+reboot                          # Reboot server
+df -h                           # Check disk space
+free -h                         # Check memory
+htop                            # Monitor resources
+```
+
+### Firewall Management
+```bash
+ufw status                      # Check firewall status
+ufw allow PORT/tcp              # Allow port
+ufw delete allow PORT/tcp       # Remove rule
+ufw enable                      # Enable firewall
+ufw disable                     # Disable firewall
+```
+
+### Service Management
+```bash
+systemctl status SERVICE        # Check service status
+systemctl restart SERVICE       # Restart service
+systemctl enable SERVICE        # Enable on boot
+systemctl disable SERVICE       # Disable on boot
+```
+
+---
+
+**Your server is ready! Let's install Docker next! 🚀**

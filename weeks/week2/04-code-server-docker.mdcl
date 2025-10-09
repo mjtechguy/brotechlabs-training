@@ -1,0 +1,952 @@
+# Deploying Code-Server with Docker
+
+In this lab, you'll deploy code-server (VS Code in the browser) using Docker. Code-server will be accessible through Nginx Proxy Manager with SSL encryption.
+
+`Code-server provides a full VS Code experience in your browser, accessible from anywhere` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, ensure:
+
+- ✅ Docker and Docker Compose installed
+- ✅ Nginx Proxy Manager deployed and running
+- ✅ nginx-proxy-network exists
+- ✅ Domain name ready (we'll configure routing later)
+- ✅ NPM admin panel accessible
+
+---
+
+## Part 1: Understanding Code-Server Deployment
+
+### What We're Deploying
+
+**Code-Server** = Visual Studio Code running in a browser
+
+**Deployment Strategy:**
+- Run code-server in Docker container
+- Connect to nginx-proxy-network
+- Access only through NPM (not directly exposed)
+- Persistent storage for projects and settings
+
+### Architecture
+
+```
+Internet
+    ↓
+NPM (Port 443, HTTPS)
+    ↓
+nginx-proxy-network (Docker Network)
+    ↓
+Code-Server Container (Port 8080, HTTP only)
+    ↓
+Persistent Volume (Projects, Settings, Extensions)
+```
+
+**Security Model:**
+- Code-server NOT directly accessible from internet
+- Only accessible through NPM reverse proxy
+- NPM handles SSL/TLS encryption
+- Code-server receives plain HTTP from NPM
+- Additional password protection at code-server level
+
+---
+
+## Part 2: Create Code-Server Directory
+
+### Navigate to Docker Directory
+
+`cd ~/docker` {{ execute }}
+
+### Create Code-Server Directory
+
+`mkdir -p code-server && cd code-server` {{ execute }}
+
+### Verify Current Directory
+
+`pwd` {{ execute }}
+
+**Expected output:** `/root/docker/code-server`
+
+---
+
+## Part 3: Create Docker Compose File
+
+### Create Code-Server Compose Configuration
+
+```{{ execute }}
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  code-server:
+    image: codercom/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York       # Change to your timezone
+      - PASSWORD=CHANGE_THIS_PASSWORD    # ⚠️ Change this!
+      - SUDO_PASSWORD=CHANGE_THIS_PASSWORD   # ⚠️ Change this!
+      # - SUDO_PASSWORD_HASH=  # Optional: Use hashed password
+      - PROXY_DOMAIN=code.yourdomain.com   # Change to your domain
+      - DEFAULT_WORKSPACE=/config/workspace   # Default project folder
+    volumes:
+      - code-server-config:/config
+      - code-server-projects:/config/workspace
+    ports:
+      - "8080:8443"   # Only for testing, remove in production
+    networks:
+      - nginx-proxy-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8443"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  nginx-proxy-network:
+    external: true
+
+volumes:
+  code-server-config:
+    driver: local
+  code-server-projects:
+    driver: local
+EOF
+```
+
+`This file defines our code-server deployment` {{ info }}
+
+### Update Configuration Values
+
+Edit the compose file to customize:
+
+`nano docker-compose.yml` {{ execute }}
+
+**Update these values:**
+
+1. **Timezone (line 9):**
+   - Find `TZ=America/New_York`
+   - Change to your timezone
+   - Example: `TZ=Europe/London`, `TZ=Asia/Tokyo`
+   - List timezones: `timedatectl list-timezones`
+
+2. **Password (line 10):**
+   - Find `PASSWORD=CHANGE_THIS_PASSWORD`
+   - Set a strong password (12+ characters)
+   - Save this password - you'll need it to login!
+
+3. **Sudo Password (line 11):**
+   - Find `SUDO_PASSWORD=CHANGE_THIS_PASSWORD`
+   - Set a strong password for sudo access inside code-server
+   - Can be same as PASSWORD or different
+
+4. **Domain (line 13):**
+   - Find `PROXY_DOMAIN=code.yourdomain.com`
+   - Change to your actual domain
+   - Example: `PROXY_DOMAIN=code.mydevlab.com`
+
+`Save and exit: Ctrl+O, Enter, Ctrl+X` {{ tip }}
+
+---
+
+## Part 4: Understanding the Configuration
+
+### Environment Variables
+
+**PUID and PGID:**
+- User and Group IDs for file permissions
+- 1000 is default for first user on Ubuntu
+- Files created will have correct ownership
+
+**TZ (Timezone):**
+- Sets container timezone
+- Important for logs and scheduled tasks
+- Format: `Continent/City`
+
+**PASSWORD:**
+- Required to access code-server
+- Sent over HTTPS (encrypted by NPM)
+- Use a strong, unique password
+
+**SUDO_PASSWORD:**
+- Password for sudo inside code-server terminal
+- Allows installing packages, system commands
+- Security layer for dangerous operations
+
+**PROXY_DOMAIN:**
+- The domain you'll use to access code-server
+- Must match NPM proxy host configuration
+- Used for HTTPS redirect and security headers
+
+**DEFAULT_WORKSPACE:**
+- Default folder when opening code-server
+- Where your projects will be stored
+- Persisted in volume
+
+### Volume Configuration
+
+**code-server-config:**
+- VS Code settings
+- User preferences
+- Extension data
+- SSH keys
+- Git configuration
+
+**code-server-projects:**
+- Your project files
+- Workspace folders
+- Code repositories
+
+`These volumes ensure your work persists across container restarts` {{ info }}
+
+### Port Mapping
+
+```yaml
+ports:
+  - "8080:8443"
+```
+
+**Port 8080 (host) → 8443 (container)**
+
+`For testing only. In production, remove this port mapping.` {{ warning }}
+
+**Why remove in production?**
+- Code-server should only be accessible through NPM
+- Direct port access bypasses SSL and reverse proxy security
+- NPM will connect via Docker network (no port needed)
+
+### Network Configuration
+
+```yaml
+networks:
+  - nginx-proxy-network
+```
+
+**Connects code-server to:**
+- Same network as NPM
+- Allows NPM to reach code-server by name
+- Enables `http://code-server:8443` communication
+
+---
+
+## Part 5: Deploy Code-Server
+
+### Pull Code-Server Image
+
+`docker compose pull` {{ execute }}
+
+**What this does:**
+- Downloads code-server image from Docker Hub
+- Verifies image integrity
+- Takes 1-3 minutes depending on connection
+
+`Code-server image is about 1GB in size` {{ info }}
+
+### Start Code-Server Container
+
+`docker compose up -d` {{ execute }}
+
+**What happens:**
+1. Creates volumes for config and projects
+2. Creates container with specified configuration
+3. Starts code-server
+4. Container runs in background
+
+### Verify Container is Running
+
+`docker compose ps` {{ execute }}
+
+**Expected output:**
+```
+NAME            STATUS          PORTS
+code-server     Up X seconds    0.0.0.0:8080->8443/tcp
+```
+
+**Status should be:** `Up` or `Up (healthy)`
+
+### Alternative Verification
+
+`docker ps | grep code-server` {{ execute }}
+
+---
+
+## Part 6: Check Code-Server Logs
+
+### View Initial Logs
+
+`docker compose logs` {{ execute }}
+
+**Look for:**
+- `HTTP server listening on http://0.0.0.0:8443`
+- No error messages
+- Extension host started
+
+### Follow Logs in Real-Time
+
+`docker compose logs -f` {{ execute }}
+
+`Press Ctrl+C to stop following logs` {{ info }}
+
+### Check Last 30 Lines
+
+`docker compose logs --tail=30` {{ execute }}
+
+---
+
+## Part 7: Test Code-Server Access (Temporary)
+
+### Test Direct Access
+
+`For testing only - we'll remove this access later` {{ warning }}
+
+Get your server IP:
+
+`hostname -I | awk '{print $1}'` {{ execute }}
+
+### Access Code-Server in Browser
+
+`Open your web browser and navigate to:` {{ info }}
+
+`http://YOUR_SERVER_IP:8080` {{ copy }}
+
+**Replace YOUR_SERVER_IP with your actual server IP**
+
+**Example:** `http://123.45.67.89:8080`
+
+`You should see the code-server interface!` {{ tip }}
+
+### Login to Code-Server
+
+Enter the password you set in `docker-compose.yml`
+
+**If login successful:**
+- You'll see VS Code interface
+- Terminal at bottom
+- File explorer on left
+
+`This confirms code-server is working correctly` {{ info }}
+
+---
+
+## Part 8: Explore Code-Server
+
+### Open Terminal in Code-Server
+
+In code-server interface:
+1. Click **Terminal** menu
+2. Select **New Terminal**
+3. Terminal opens at bottom
+
+### Check Container Environment
+
+In code-server terminal, run:
+
+`whoami` {{ copy }}
+
+**Expected output:** `coder` or `abc` (code-server user)
+
+`pwd` {{ copy }}
+
+**Expected output:** `/config/workspace` (your workspace)
+
+`ls -la` {{ copy }}
+
+**Expected output:** Workspace directory contents
+
+### Test Sudo Access
+
+In code-server terminal:
+
+`sudo whoami` {{ copy }}
+
+**Enter your SUDO_PASSWORD when prompted**
+
+**Expected output:** `root`
+
+`This confirms you have sudo access inside code-server` {{ tip }}
+
+### Create Test Project
+
+In code-server terminal:
+
+```bash
+mkdir -p ~/workspace/test-project
+cd ~/workspace/test-project
+echo "# Test Project" > README.md
+```
+
+### Open Project in Code-Server
+
+1. Click **File** menu
+2. Select **Open Folder**
+3. Navigate to `/config/workspace/test-project`
+4. Click **OK**
+
+---
+
+## Part 9: Install Extensions in Code-Server
+
+### Access Extensions Marketplace
+
+In code-server:
+1. Click **Extensions** icon (left sidebar)
+2. Search for extensions
+3. Install as needed
+
+### Recommended Extensions
+
+**Python Development:**
+- Search: `Python`
+- Publisher: Microsoft
+- Click **Install**
+
+**Docker:**
+- Search: `Docker`
+- Publisher: Microsoft
+- Click **Install**
+
+**Git:**
+- Search: `GitLens`
+- Publisher: GitKraken
+- Click **Install**
+
+**Markdown:**
+- Search: `Markdown All in One`
+- Publisher: Yu Zhang
+- Click **Install**
+
+`Extensions are stored in volume, so they persist across restarts` {{ info }}
+
+---
+
+## Part 10: Configure Code-Server Settings
+
+### Access Settings
+
+In code-server:
+1. Click **File** menu
+2. Select **Preferences**
+3. Select **Settings**
+
+Or press: `Ctrl+,`
+
+### Recommended Settings
+
+**Theme:**
+- Search: `Color Theme`
+- Select your preferred theme (Dark+ recommended)
+
+**Font Size:**
+- Search: `Font Size`
+- Set to 14 or your preference
+
+**Auto Save:**
+- Search: `Auto Save`
+- Set to `afterDelay`
+- Delay: 1000ms
+
+**Format on Save:**
+- Search: `Format On Save`
+- Check the box to enable
+
+---
+
+## Part 11: Secure Code-Server for Production
+
+### Remove Direct Port Access
+
+`This is critical for production security!` {{ danger }}
+
+Edit docker-compose.yml:
+
+`nano docker-compose.yml` {{ execute }}
+
+**Remove or comment out:**
+```yaml
+# ports:
+#   - "8080:8443"
+```
+
+**Save and exit:** Ctrl+O, Enter, Ctrl+X
+
+### Recreate Container Without Port
+
+`docker compose up -d` {{ execute }}
+
+### Verify Port Removed
+
+`docker ps | grep code-server` {{ execute }}
+
+**Expected output:** NO `0.0.0.0:8080->8443/tcp` in PORTS column
+
+`Code-server is now only accessible via Docker network` {{ tip }}
+
+### Test Network Access from NPM Container
+
+`docker exec nginx-proxy-manager curl -I http://code-server:8443` {{ execute }}
+
+**Expected output:** HTTP response headers from code-server
+
+`NPM can reach code-server via Docker network` {{ info }}
+
+---
+
+## Part 12: Verify Code-Server Health
+
+### Check Container Health Status
+
+`docker inspect code-server | grep -A 5 '"Health"'` {{ execute }}
+
+**Look for:**
+- `"Status": "healthy"`
+
+### Check Resource Usage
+
+`docker stats code-server --no-stream` {{ execute }}
+
+**Monitor:**
+- CPU %
+- Memory usage (typically 200-500MB)
+- Network I/O
+
+### Check Logs for Errors
+
+`docker compose logs --tail=50 | grep -i error` {{ execute }}
+
+**Expected output:** No errors (or only benign warnings)
+
+---
+
+## Part 13: Code-Server Data Persistence
+
+### Inspect Volumes
+
+`docker volume ls | grep code-server` {{ execute }}
+
+**You should see:**
+- `code-server_code-server-config`
+- `code-server_code-server-projects`
+
+### Inspect Config Volume
+
+`docker volume inspect code-server_code-server-config` {{ execute }}
+
+**Note the Mountpoint**
+
+### View Config Files
+
+```{{ execute }}
+ls -la $(docker volume inspect code-server_code-server-config --format '{{ .Mountpoint }}')
+```
+
+**You should see:**
+- `data/` - VS Code data
+- `extensions/` - Installed extensions
+- `workspace/` - Your projects
+- Other config files
+
+### View Projects Volume
+
+```{{ execute }}
+ls -la $(docker volume inspect code-server_code-server-projects --format '{{ .Mountpoint }}')
+```
+
+**You should see:**
+- Test project we created earlier
+- Any other projects you create
+
+---
+
+## Part 14: Backup Code-Server Data
+
+### Create Backup Directory
+
+`mkdir -p ~/backups/code-server` {{ execute }}
+
+### Backup Configuration Volume
+
+```{{ execute }}
+docker run --rm \
+  -v code-server_code-server-config:/source:ro \
+  -v ~/backups/code-server:/backup \
+  ubuntu \
+  tar czf /backup/code-server-config-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+```
+
+### Backup Projects Volume
+
+```{{ execute }}
+docker run --rm \
+  -v code-server_code-server-projects:/source:ro \
+  -v ~/backups/code-server:/backup \
+  ubuntu \
+  tar czf /backup/code-server-projects-$(date +%Y%m%d-%H%M%S).tar.gz -C /source .
+```
+
+### List Backups
+
+`ls -lh ~/backups/code-server/` {{ execute }}
+
+### Backup Docker Compose File
+
+`cp docker-compose.yml ~/backups/code-server/docker-compose.yml.backup` {{ execute }}
+
+`Backup regularly - your work depends on it!` {{ warning }}
+
+---
+
+## Part 15: Code-Server Container Management
+
+### Stop Code-Server
+
+`docker compose stop` {{ execute }}
+
+### Start Code-Server
+
+`docker compose start` {{ execute }}
+
+### Restart Code-Server
+
+`docker compose restart` {{ execute }}
+
+### View Logs After Restart
+
+`docker compose logs --tail=30` {{ execute }}
+
+### Update Code-Server
+
+Pull latest image:
+
+`docker compose pull` {{ execute }}
+
+Recreate with new image:
+
+`docker compose up -d` {{ execute }}
+
+Verify new version:
+
+`docker exec code-server code-server --version` {{ execute }}
+
+---
+
+## Part 16: Troubleshooting Code-Server
+
+### Container Won't Start
+
+**Check logs:**
+
+`docker compose logs` {{ execute }}
+
+**Common issues:**
+- Port conflict (if port mapping enabled)
+- Invalid password in environment variables
+- Network doesn't exist
+- Volume permission issues
+
+### Can't Login to Code-Server
+
+**Verify password in config:**
+
+`docker exec code-server cat /config/config.yaml` {{ execute }}
+
+**Look for:** `password:` field
+
+**If password hash shown, that's correct**
+
+**Reset password:**
+
+Edit docker-compose.yml, change PASSWORD value, restart:
+
+`docker compose up -d` {{ execute }}
+
+### Code-Server is Slow
+
+**Check resource usage:**
+
+`docker stats code-server` {{ execute }}
+
+`Press Ctrl+C to stop` {{ info }}
+
+**If high CPU/memory:**
+- Disable unnecessary extensions
+- Close unused editor tabs
+- Increase server resources
+- Check for runaway processes in terminal
+
+### Terminal Doesn't Work
+
+**Check shell availability:**
+
+`docker exec code-server which bash` {{ execute }}
+
+**Expected output:** `/bin/bash`
+
+**Restart container:**
+
+`docker compose restart` {{ execute }}
+
+### Extensions Won't Install
+
+**Check internet connectivity from container:**
+
+`docker exec code-server curl -I https://marketplace.visualstudio.com` {{ execute }}
+
+**Expected:** HTTP 200 response
+
+**Check disk space:**
+
+`docker exec code-server df -h /config` {{ execute }}
+
+**Restart code-server:**
+
+`docker compose restart` {{ execute }}
+
+---
+
+## Part 17: Advanced Code-Server Configuration
+
+### Enable Password Hashing (More Secure)
+
+Generate password hash:
+
+`docker run --rm -it codercom/code-server --hash-password YOUR_PASSWORD` {{ copy }}
+
+**Replace YOUR_PASSWORD with your actual password**
+
+**Copy the output hash**
+
+Edit docker-compose.yml:
+
+`nano docker-compose.yml` {{ execute }}
+
+Replace:
+```yaml
+- PASSWORD=your_password
+```
+
+With:
+```yaml
+- PASSWORD_HASH=your_copied_hash
+```
+
+Remove or comment out the PASSWORD line.
+
+Recreate container:
+
+`docker compose up -d` {{ execute }}
+
+### Configure Git in Code-Server
+
+Access code-server terminal and configure git:
+
+```bash
+git config --global user.name "Your Name"
+git config --global user.email "your@email.com"
+```
+
+`Run these commands in code-server's terminal, not the server SSH session` {{ warning }}
+
+### Add SSH Key for Git
+
+In code-server terminal:
+
+```bash
+ssh-keygen -t ed25519 -C "your@email.com"
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy the public key and add to GitHub/GitLab.
+
+---
+
+## Part 18: Prepare for DNS Configuration
+
+### Document Code-Server Setup
+
+```{{ execute }}
+cat > ~/code-server-setup-info.txt << EOF
+# Code-Server Setup Information
+Date: $(date)
+
+## Container Information
+Container Name: code-server
+Image: codercom/code-server:latest
+Network: nginx-proxy-network
+Internal Port: 8443
+
+## Access Information
+Domain (planned): code.yourdomain.com
+Password: (stored in password manager)
+Sudo Password: (stored in password manager)
+
+## Volumes
+Config: code-server_code-server-config
+Projects: code-server_code-server-projects
+
+## Volume Locations
+Config: $(docker volume inspect code-server_code-server-config --format '{{ .Mountpoint }}')
+Projects: $(docker volume inspect code-server_code-server-projects --format '{{ .Mountpoint }}')
+
+## Container Status
+$(docker ps | grep code-server)
+
+## Useful Commands
+Start: docker compose -f ~/docker/code-server/docker-compose.yml start
+Stop: docker compose -f ~/docker/code-server/docker-compose.yml stop
+Logs: docker compose -f ~/docker/code-server/docker-compose.yml logs -f
+Restart: docker compose -f ~/docker/code-server/docker-compose.yml restart
+Terminal: docker exec -it code-server bash
+
+## Next Steps
+1. Configure DNS A record pointing to server IP
+2. Create proxy host in NPM for code.yourdomain.com
+3. Request SSL certificate from Let's Encrypt
+4. Access code-server securely via HTTPS
+EOF
+```
+
+View your notes:
+
+`cat ~/code-server-setup-info.txt` {{ execute }}
+
+### Verify Complete Setup
+
+Run this comprehensive check:
+
+```{{ execute }}
+echo "=== Code-Server Deployment Checklist ==="
+echo ""
+echo -n "Code-server container running: "
+docker ps | grep -q code-server && echo "✓ Yes" || echo "✗ No"
+echo -n "Code-server healthy: "
+[ "$(docker inspect code-server --format='{{.State.Health.Status}}')" = "healthy" ] && echo "✓ Yes" || echo "✗ No"
+echo -n "Connected to nginx-proxy-network: "
+docker inspect code-server | grep -q nginx-proxy-network && echo "✓ Yes" || echo "✗ No"
+echo -n "No direct port exposure: "
+! docker ps | grep code-server | grep -q "0.0.0.0:8080" && echo "✓ Yes (secure)" || echo "✗ No (port still exposed)"
+echo -n "Config volume exists: "
+docker volume ls | grep -q "code-server-config" && echo "✓ Yes" || echo "✗ No"
+echo -n "Projects volume exists: "
+docker volume ls | grep -q "code-server-projects" && echo "✓ Yes" || echo "✗ No"
+echo -n "Reachable from NPM: "
+docker exec nginx-proxy-manager curl -s -o /dev/null -w "%{http_code}" http://code-server:8443 | grep -q "200\|30" && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "If all items show ✓, you're ready for DNS and NPM configuration!"
+```
+
+---
+
+## Summary
+
+Congratulations! Code-Server is now deployed and ready for secure access.
+
+### What We Accomplished:
+
+✅ **Code-Server Deployment**
+- Created Docker Compose configuration
+- Deployed code-server container
+- Configured environment variables (timezone, passwords)
+- Set up persistent volumes for data
+
+✅ **Code-Server Configuration**
+- Tested code-server access
+- Installed extensions
+- Configured VS Code settings
+- Set up workspace
+
+✅ **Security Hardening**
+- Removed direct port access
+- Configured access via Docker network only
+- Prepared for HTTPS-only access through NPM
+
+✅ **Data Persistence**
+- Created config volume
+- Created projects volume
+- Implemented backup strategy
+
+### Current Architecture:
+
+```
+Internet
+    ↓
+Nginx Proxy Manager (Ports 80, 443, 81)
+    ↓
+nginx-proxy-network (Docker Network)
+    ↓
+Code-Server Container (Internal Port 8443)
+    ↓
+Persistent Volumes:
+  - code-server-config (Settings, Extensions)
+  - code-server-projects (Your Code)
+```
+
+### Security Status:
+
+- ✅ Code-server NOT directly accessible from internet
+- ✅ Only accessible via NPM on Docker network
+- ✅ Password protected
+- ✅ Ready for SSL/TLS encryption via NPM
+- ✅ Sudo password required for system commands
+
+### Next Steps:
+
+1. **Configure DNS** → Point your domain to server IP
+2. **Configure NPM Proxy Host** → Route domain to code-server
+3. **Request SSL Certificate** → Enable HTTPS
+4. **Access Securely** → Use code-server via https://code.yourdomain.com
+
+---
+
+## Quick Reference
+
+### Code-Server Management Commands
+
+```bash
+# Navigate to code-server directory
+cd ~/docker/code-server
+
+# Start code-server
+docker compose up -d
+
+# Stop code-server
+docker compose down
+
+# View logs
+docker compose logs -f
+
+# Restart code-server
+docker compose restart
+
+# Check status
+docker compose ps
+
+# Update code-server
+docker compose pull
+docker compose up -d
+
+# Access container shell
+docker exec -it code-server bash
+
+# Backup projects
+docker run --rm \
+  -v code-server_code-server-projects:/source:ro \
+  -v ~/backups/code-server:/backup \
+  ubuntu \
+  tar czf /backup/projects-$(date +%Y%m%d).tar.gz -C /source .
+```
+
+### Important Files and Locations
+
+- **Compose File:** `~/docker/code-server/docker-compose.yml`
+- **Config Volume:** Check with `docker volume inspect code-server_code-server-config`
+- **Projects Volume:** Check with `docker volume inspect code-server_code-server-projects`
+- **Backup Location:** `~/backups/code-server/`
+
+---
+
+**Code-Server is deployed! Let's configure DNS and enable HTTPS next! 🔒**

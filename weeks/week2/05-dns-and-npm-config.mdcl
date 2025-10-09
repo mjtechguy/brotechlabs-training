@@ -1,0 +1,1123 @@
+# DNS Configuration and NPM Proxy Setup
+
+In this final lab, you'll configure DNS records to point your domain to your server, then set up Nginx Proxy Manager to route traffic to code-server with automatic SSL/TLS certificates.
+
+`This lab connects all the pieces: Domain → DNS → Server → NPM → Code-Server` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, ensure:
+
+- ✅ Domain name purchased (Namecheap or other registrar)
+- ✅ Cloudflare account created (free)
+- ✅ Hetzner server with public IP address
+- ✅ Nginx Proxy Manager deployed and accessible
+- ✅ Code-Server deployed and running
+- ✅ Both containers on nginx-proxy-network
+
+---
+
+## Part 1: Understanding the Setup
+
+### Complete Request Flow
+
+```
+User types: https://code.yourdomain.com
+         ↓
+1. DNS Lookup (Cloudflare)
+   - Resolves code.yourdomain.com to SERVER_IP
+         ↓
+2. Browser connects to SERVER_IP:443 (HTTPS)
+         ↓
+3. Nginx Proxy Manager receives request
+   - Checks domain: code.yourdomain.com
+   - Terminates SSL/TLS
+   - Finds matching proxy host rule
+         ↓
+4. NPM forwards to code-server:8443 (HTTP)
+   - Internal Docker network
+   - Plain HTTP (encrypted at NPM layer)
+         ↓
+5. Code-Server responds
+   - Returns HTML/JS/CSS
+         ↓
+6. NPM encrypts and sends to browser
+   - User sees VS Code interface over HTTPS
+```
+
+### What We'll Configure
+
+1. **Namecheap**: Add Cloudflare nameservers
+2. **Cloudflare**: Create A record pointing to server
+3. **NPM**: Create proxy host for code-server
+4. **NPM**: Request SSL certificate from Let's Encrypt
+5. **Test**: Access code-server via HTTPS
+
+---
+
+## Part 2: Gather Required Information
+
+### Get Your Server IP Address
+
+`hostname -I | awk '{print $1}'` {{ execute }}
+
+**Copy this IP address** - you'll need it for DNS configuration
+
+### Verify NPM is Accessible
+
+`curl -I http://localhost:81` {{ execute }}
+
+**Expected output:** HTTP response from NPM admin panel
+
+### Verify Code-Server is Running
+
+`docker ps | grep code-server` {{ execute }}
+
+**Expected output:** code-server container in "Up" state
+
+### Test NPM Can Reach Code-Server
+
+`docker exec nginx-proxy-manager curl -I http://code-server:8443` {{ execute }}
+
+**Expected output:** HTTP response from code-server
+
+`All services are ready for configuration` {{ tip }}
+
+---
+
+## Part 3: Configure Cloudflare (DNS Provider)
+
+`These steps are performed in your web browser on Cloudflare's website` {{ info }}
+
+### Step 1: Create Cloudflare Account
+
+1. Go to [cloudflare.com](https://cloudflare.com)
+2. Click **Sign Up**
+3. Enter email and create password
+4. Verify email address
+
+`Cloudflare is free for our use case` {{ tip }}
+
+### Step 2: Add Your Domain to Cloudflare
+
+1. Log into Cloudflare dashboard
+2. Click **Add a Site**
+3. Enter your domain (e.g., `mydevlab.com`)
+4. Click **Add Site**
+5. Select **Free Plan**
+6. Click **Continue**
+
+### Step 3: Review Existing DNS Records
+
+Cloudflare will scan for existing DNS records.
+
+**You might see:**
+- Existing A records
+- MX records (if email configured)
+- Other records
+
+**For now:**
+- Note what's there
+- We'll add our own A record next
+- Leave existing records as-is (unless you know they're wrong)
+
+Click **Continue**
+
+### Step 4: Note Cloudflare Nameservers
+
+Cloudflare will show you **two nameservers**, like:
+
+```
+alexa.ns.cloudflare.com
+chad.ns.cloudflare.com
+```
+
+`Copy these nameservers - you'll add them to Namecheap` {{ warning }}
+
+**Don't click "Done, check nameservers" yet**
+
+Keep this page open and proceed to Namecheap.
+
+---
+
+## Part 4: Configure Namecheap (Domain Registrar)
+
+`These steps are performed in your web browser on Namecheap's website` {{ info }}
+
+### Step 1: Log into Namecheap
+
+1. Go to [namecheap.com](https://namecheap.com)
+2. Click **Sign In**
+3. Enter your credentials
+4. Go to **Domain List**
+
+### Step 2: Manage Your Domain
+
+1. Find your domain in the list
+2. Click **Manage** next to your domain
+
+### Step 3: Change Nameservers
+
+1. Scroll to **Nameservers** section
+2. Select **Custom DNS** from dropdown
+3. Enter Cloudflare's nameservers:
+   - Nameserver 1: `alexa.ns.cloudflare.com` (use your actual nameserver)
+   - Nameserver 2: `chad.ns.cloudflare.com` (use your actual nameserver)
+4. Click **✓** (checkmark) to save
+
+`Nameserver changes can take 15 minutes to 24 hours to propagate` {{ info }}
+
+### Step 4: Verify Nameserver Update
+
+Wait 5-10 minutes, then check:
+
+**Using online tool:**
+- Go to [whatsmydns.net](https://whatsmydns.net)
+- Select "NS" record type
+- Enter your domain
+- Check if Cloudflare nameservers appear
+
+**Using command line:**
+
+`dig NS yourdomain.com +short` {{ copy }}
+
+**Expected output:** Cloudflare nameservers
+
+`Or use: nslookup -type=NS yourdomain.com` {{ tip }}
+
+---
+
+## Part 5: Complete Cloudflare Setup
+
+### Step 1: Confirm Nameservers in Cloudflare
+
+1. Return to Cloudflare dashboard
+2. Click **Done, check nameservers**
+3. Cloudflare will verify the change
+
+**If successful:**
+- Status changes to "Active"
+- You'll receive confirmation email
+
+**If not yet updated:**
+- Cloudflare shows "Pending"
+- Check back in 15-30 minutes
+- Cloudflare will email when active
+
+### Step 2: Configure SSL/TLS Settings
+
+1. In Cloudflare dashboard, click on your domain
+2. Go to **SSL/TLS** tab
+3. Set encryption mode to **Full** (not Full Strict)
+
+**Why Full, not Full Strict?**
+- Full Strict requires valid certificate on origin server
+- We're using Let's Encrypt, which NPM will handle
+- Full allows self-signed cert or any cert on origin
+
+`For this setup, use Full mode` {{ info }}
+
+### Step 3: Disable Cloudflare Proxy (Orange Cloud)
+
+`We want DNS only, not Cloudflare's proxy features` {{ warning }}
+
+1. Go to **DNS** tab
+2. Click **Records**
+3. Look for the **Proxy status** column (cloud icon)
+4. If any A records show **orange cloud**, click to toggle
+5. Change to **gray cloud** (DNS only)
+
+**Why gray cloud?**
+- Direct connection to your server
+- No Cloudflare caching or SSL termination
+- NPM handles SSL/TLS
+- Simpler troubleshooting
+
+---
+
+## Part 6: Create DNS A Record
+
+`This step is done in Cloudflare dashboard` {{ info }}
+
+### Step 1: Access DNS Records
+
+1. In Cloudflare dashboard, select your domain
+2. Click **DNS** tab
+3. Click **Records**
+
+### Step 2: Create A Record for Code-Server
+
+Click **Add record** and configure:
+
+**Record Configuration:**
+- **Type**: A
+- **Name**: `code` (this creates code.yourdomain.com)
+- **IPv4 address**: `YOUR_SERVER_IP` (from Part 2)
+- **Proxy status**: Gray cloud (DNS only)
+- **TTL**: Auto
+
+Click **Save**
+
+### Step 3: Verify A Record
+
+`dig A code.yourdomain.com +short` {{ copy }}
+
+**Replace `yourdomain.com` with your actual domain**
+
+**Expected output:** Your server's IP address
+
+`If it doesn't work immediately, wait 5 minutes for DNS propagation` {{ tip }}
+
+### Step 4: Create Additional A Record (Optional)
+
+For NPM admin panel access via domain:
+
+Click **Add record**:
+
+- **Type**: A
+- **Name**: `npm` (creates npm.yourdomain.com)
+- **IPv4 address**: `YOUR_SERVER_IP`
+- **Proxy status**: Gray cloud
+- **TTL**: Auto
+
+Click **Save**
+
+`This allows accessing NPM at https://npm.yourdomain.com instead of IP:81` {{ info }}
+
+### Step 5: Create Root A Record (Optional)
+
+For main domain (yourdomain.com):
+
+Click **Add record**:
+
+- **Type**: A
+- **Name**: `@` (represents root domain)
+- **IPv4 address**: `YOUR_SERVER_IP`
+- **Proxy status**: Gray cloud
+- **TTL**: Auto
+
+Click **Save**
+
+---
+
+## Part 7: Test DNS Resolution
+
+### Test from Your Server
+
+Test code-server subdomain:
+
+`dig code.yourdomain.com +short` {{ copy }}
+
+**Replace with your domain**
+
+**Expected output:** Your server IP
+
+Test NPM subdomain (if created):
+
+`dig npm.yourdomain.com +short` {{ copy }}
+
+**Expected output:** Your server IP
+
+### Test from External DNS
+
+Test with Google DNS:
+
+`dig @8.8.8.8 code.yourdomain.com +short` {{ copy }}
+
+Test with Cloudflare DNS:
+
+`dig @1.1.1.1 code.yourdomain.com +short` {{ copy }}
+
+**Both should return your server IP**
+
+### Check DNS Propagation Globally
+
+Use online tool:
+1. Go to [whatsmydns.net](https://whatsmydns.net)
+2. Select "A" record type
+3. Enter: `code.yourdomain.com`
+4. Click **Search**
+
+**Should show your server IP in multiple locations**
+
+`If not all locations show the IP, wait 15-30 minutes` {{ info }}
+
+---
+
+## Part 8: Access NPM Admin Panel
+
+### Get NPM Admin URL
+
+You can access NPM via:
+
+**Option 1: IP Address** (temporary)
+
+`http://YOUR_SERVER_IP:81` {{ copy }}
+
+**Option 2: Domain** (if you created npm subdomain)
+
+`http://npm.yourdomain.com:81` {{ copy }}
+
+### Login to NPM
+
+1. Navigate to NPM admin panel
+2. Login with your credentials (set in lab 3)
+
+**If you forgot password:**
+- You'll need to reset NPM (see lab 3 troubleshooting)
+
+`Keep NPM admin panel open for the next steps` {{ tip }}
+
+---
+
+## Part 9: Create Proxy Host for Code-Server
+
+`These steps are performed in NPM web interface` {{ info }}
+
+### Step 1: Access Proxy Hosts
+
+In NPM dashboard:
+1. Click **Hosts** in top menu
+2. Click **Proxy Hosts**
+3. Click **Add Proxy Host** button
+
+### Step 2: Configure Details Tab
+
+**Domain Names:**
+- Enter: `code.yourdomain.com`
+- Press Enter to confirm
+
+`Replace yourdomain.com with your actual domain` {{ warning }}
+
+**Scheme:**
+- Select: `http`
+
+**Why HTTP?**
+- NPM to code-server uses Docker network
+- NPM handles SSL termination
+- Code-server receives plain HTTP from NPM
+
+**Forward Hostname/IP:**
+- Enter: `code-server`
+
+**Why "code-server"?**
+- Docker container name
+- Containers on same network can reach each other by name
+- No IP needed
+
+**Forward Port:**
+- Enter: `8443`
+
+**This is code-server's listening port**
+
+**Cache Assets:**
+- Leave unchecked (dynamic content)
+
+**Block Common Exploits:**
+- Check this box ✓
+
+**Websockets Support:**
+- Check this box ✓
+
+**Why Websockets?**
+- Code-server uses websockets for real-time communication
+- Required for terminal, file watching, extensions
+
+**Access List:**
+- Select: `Publicly Accessible`
+- (Code-server has its own password protection)
+
+### Step 3: Configure SSL Tab
+
+Click **SSL** tab
+
+**SSL Certificate:**
+- Select: `Request a new SSL Certificate`
+
+**Force SSL:**
+- Check this box ✓
+
+**This redirects HTTP to HTTPS automatically**
+
+**HTTP/2 Support:**
+- Check this box ✓
+
+**HSTS Enabled:**
+- Check this box ✓
+- Leave HSTS Subdomains unchecked
+
+**HSTS (HTTP Strict Transport Security):**
+- Forces HTTPS in browser
+- Prevents downgrade attacks
+
+**Email Address for Let's Encrypt:**
+- Enter your email address
+- Let's Encrypt sends expiry notices here (though NPM auto-renews)
+
+**Agree to Let's Encrypt Terms:**
+- Check this box ✓
+
+`You must agree to Let's Encrypt TOS to get certificates` {{ info }}
+
+### Step 4: Save and Request Certificate
+
+Click **Save**
+
+**What happens:**
+1. NPM creates proxy host configuration
+2. NPM contacts Let's Encrypt
+3. Let's Encrypt verifies domain ownership (HTTP-01 challenge)
+4. NPM responds to challenge automatically
+5. Let's Encrypt issues certificate
+6. NPM installs certificate
+7. HTTPS is enabled!
+
+`This process takes 10-30 seconds` {{ tip }}
+
+**Watch for:**
+- Success notification
+- Certificate icon appears next to proxy host
+
+### Step 5: Verify Proxy Host Created
+
+In NPM Proxy Hosts list:
+
+**You should see:**
+- Domain: `code.yourdomain.com`
+- Status: Online (green)
+- SSL: Let's Encrypt certificate (lock icon)
+
+`If you see an error, check troubleshooting section` {{ warning }}
+
+---
+
+## Part 10: Test Code-Server Access via HTTPS
+
+### Access Code-Server
+
+`Open your web browser and navigate to:` {{ info }}
+
+`https://code.yourdomain.com` {{ copy }}
+
+**Replace with your actual domain**
+
+### What Should Happen
+
+1. **Browser connects via HTTPS**
+   - Lock icon appears in address bar
+   - Certificate is valid (Let's Encrypt)
+
+2. **NPM receives request**
+   - Matches domain to proxy host
+   - Forwards to code-server
+
+3. **Code-Server login page appears**
+   - Enter your password (set in lab 4)
+
+4. **VS Code interface loads**
+   - Full IDE in browser
+   - Encrypted connection
+   - Accessible from anywhere!
+
+`Congratulations! Your secure code-server is live! 🎉` {{ tip }}
+
+---
+
+## Part 11: Create NPM Proxy Host (Optional)
+
+`Secure NPM admin panel with its own subdomain and SSL` {{ info }}
+
+### Why Secure NPM Admin Panel?
+
+- Currently accessible at http://IP:81
+- No encryption
+- Professional subdomain
+- SSL/TLS encryption
+
+### Step 1: Create Proxy Host for NPM
+
+In NPM, click **Add Proxy Host**
+
+**Details tab:**
+- Domain: `npm.yourdomain.com`
+- Scheme: `http`
+- Forward Hostname/IP: `localhost`
+- Forward Port: `81`
+- Websockets: ✓
+- Block Common Exploits: ✓
+
+**SSL tab:**
+- Request new SSL Certificate: ✓
+- Force SSL: ✓
+- HTTP/2: ✓
+- HSTS: ✓
+- Email: (your email)
+- Agree to TOS: ✓
+
+Click **Save**
+
+### Step 2: Access NPM via HTTPS
+
+`https://npm.yourdomain.com` {{ copy }}
+
+**Replace with your domain**
+
+**You should see:**
+- NPM login page
+- Valid SSL certificate
+- Secure connection
+
+`Now you can access NPM securely via domain instead of IP:81` {{ tip }}
+
+---
+
+## Part 12: Verify SSL Certificates
+
+### Check Certificate in Browser
+
+1. Visit `https://code.yourdomain.com`
+2. Click lock icon in address bar
+3. Click **Certificate**
+
+**You should see:**
+- Issued by: Let's Encrypt
+- Valid from: (today's date)
+- Valid to: (90 days from now)
+- Subject: code.yourdomain.com
+
+### Check Certificate from Command Line
+
+`echo | openssl s_client -connect code.yourdomain.com:443 2>/dev/null | openssl x509 -noout -dates` {{ copy }}
+
+**Replace with your domain**
+
+**Expected output:**
+```
+notBefore=Dec  1 00:00:00 2024 GMT
+notAfter=Mar  1 23:59:59 2025 GMT
+```
+
+### View All Certificates in NPM
+
+In NPM dashboard:
+1. Click **SSL Certificates**
+2. View all issued certificates
+
+**For each certificate:**
+- Domain name(s)
+- Expiry date
+- Auto-renew status
+
+`NPM automatically renews certificates 30 days before expiry` {{ info }}
+
+---
+
+## Part 13: Understanding SSL Auto-Renewal
+
+### How NPM Handles Renewal
+
+**NPM checks certificates daily:**
+1. Checks expiry date
+2. If < 30 days remaining:
+   - Contacts Let's Encrypt
+   - Requests renewal
+   - Completes ACME challenge
+   - Installs new certificate
+3. Logs renewal activity
+
+**No action needed from you!**
+
+### Verify Auto-Renewal is Enabled
+
+In NPM dashboard:
+1. Go to **SSL Certificates**
+2. Click on your certificate
+3. Check "Auto-renew" status
+
+**Should show:**
+- Auto-renew: Enabled ✓
+- Next check: (date)
+
+### Check Renewal Logs
+
+`docker logs nginx-proxy-manager | grep -i renew` {{ execute }}
+
+**Look for:**
+- Certificate renewal attempts
+- Success/failure messages
+
+---
+
+## Part 14: Test Complete Request Flow
+
+### Test HTTP to HTTPS Redirect
+
+`curl -I http://code.yourdomain.com` {{ copy }}
+
+**Expected output:**
+```
+HTTP/1.1 301 Moved Permanently
+Location: https://code.yourdomain.com/
+```
+
+**301 redirect = automatic HTTPS upgrade** ✓
+
+### Test HTTPS Connection
+
+`curl -I https://code.yourdomain.com` {{ copy }}
+
+**Expected output:**
+```
+HTTP/2 200
+server: nginx
+```
+
+**HTTP/2 = modern, fast protocol** ✓
+
+### Test from Different Locations
+
+Use online tools:
+- [SSL Labs SSL Test](https://www.ssllabs.com/ssltest/)
+  - Enter: `code.yourdomain.com`
+  - Should get A or A+ rating
+
+- [SecurityHeaders.com](https://securityheaders.com/)
+  - Enter: `https://code.yourdomain.com`
+  - Check security headers
+
+`These tools verify your SSL configuration is secure` {{ tip }}
+
+---
+
+## Part 15: Troubleshooting
+
+### Certificate Request Failed
+
+**Error:** "Let's Encrypt validation failed"
+
+**Causes:**
+1. DNS not propagated yet
+2. Port 80 blocked
+3. Domain points to wrong IP
+
+**Solutions:**
+
+`Wait for DNS propagation` {{ execute }}
+
+`dig code.yourdomain.com +short` {{ copy }}
+
+Verify it returns your server IP
+
+`Check port 80 is accessible:` {{ execute }}
+
+`curl -I http://YOUR_SERVER_IP` {{ copy }}
+
+Should get response from NPM
+
+`Check Hetzner firewall allows port 80`
+
+### "502 Bad Gateway" Error
+
+**Cause:** NPM can't reach code-server
+
+**Check code-server is running:**
+
+`docker ps | grep code-server` {{ execute }}
+
+**Check network connection:**
+
+`docker exec nginx-proxy-manager curl -I http://code-server:8443` {{ execute }}
+
+Should get HTTP response
+
+**Restart code-server:**
+
+`cd ~/docker/code-server && docker compose restart` {{ execute }}
+
+### "SSL Handshake Failed"
+
+**Cause:** Certificate issue
+
+**Regenerate certificate:**
+1. In NPM, go to SSL Certificates
+2. Delete existing certificate
+3. Go to Proxy Host
+4. Edit proxy host
+5. SSL tab: Request new certificate
+6. Save
+
+### Can't Access NPM Admin Panel
+
+**Check NPM is running:**
+
+`docker ps | grep nginx-proxy-manager` {{ execute }}
+
+**Restart NPM:**
+
+`cd ~/docker/nginx-proxy-manager && docker compose restart` {{ execute }}
+
+**Check logs:**
+
+`cd ~/docker/nginx-proxy-manager && docker compose logs --tail=50` {{ execute }}
+
+---
+
+## Part 16: Security Best Practices
+
+### Restrict NPM Admin Access
+
+**Option 1: Firewall Rule**
+
+Allow only your IP to access port 81:
+
+`ufw delete allow 81/tcp` {{ copy }}
+
+`ufw allow from YOUR_IP to any port 81 proto tcp` {{ copy }}
+
+**Option 2: Access List in NPM**
+
+1. In NPM, go to **Access Lists**
+2. Create new access list
+3. Set authorization (username/password)
+4. Apply to NPM proxy host
+
+**Option 3: SSH Tunnel (Most Secure)**
+
+Remove port 81 exposure, use SSH tunnel:
+
+`ssh -L 8081:localhost:81 root@YOUR_SERVER_IP` {{ copy }}
+
+Access NPM at: `http://localhost:8081`
+
+### Use Strong Passwords
+
+**Code-Server:**
+- 16+ characters
+- Mix of upper, lower, numbers, symbols
+- Unique password
+
+**NPM Admin:**
+- Different password than code-server
+- Store in password manager
+
+### Enable 2FA (Future Enhancement)
+
+NPM doesn't have built-in 2FA, but you can:
+- Use Cloudflare Access (free tier)
+- Use Authelia (authentication server)
+- Use OAuth2 Proxy
+
+`Consider implementing 2FA for production use` {{ tip }}
+
+### Monitor Access Logs
+
+**NPM Access Logs:**
+
+`docker exec nginx-proxy-manager cat /data/logs/proxy-host-*.log` {{ execute }}
+
+**Code-Server Logs:**
+
+`cd ~/docker/code-server && docker compose logs --tail=50` {{ execute }}
+
+---
+
+## Part 17: Adding More Services
+
+### Deploy Additional Applications
+
+You can now easily add more services:
+
+1. Deploy new Docker container
+2. Add to nginx-proxy-network
+3. Create A record in Cloudflare
+4. Create proxy host in NPM
+5. Request SSL certificate
+
+**Example services to add:**
+- WordPress (blog)
+- Portainer (Docker management UI)
+- Nextcloud (file storage)
+- GitLab (Git hosting)
+- Grafana (monitoring)
+
+### Example: Add Portainer
+
+**Deploy Portainer:**
+
+```bash
+docker run -d \
+  --name portainer \
+  --network nginx-proxy-network \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer-data:/data \
+  --restart unless-stopped \
+  portainer/portainer-ce:latest
+```
+
+**Create DNS record:**
+- Type: A
+- Name: portainer
+- IP: YOUR_SERVER_IP
+
+**Create NPM proxy host:**
+- Domain: portainer.yourdomain.com
+- Forward: portainer:9000
+- SSL: Request certificate
+
+**Access:**
+- https://portainer.yourdomain.com
+
+`Same pattern for any web application!` {{ tip }}
+
+---
+
+## Part 18: Final Verification
+
+### Run Complete System Check
+
+```{{ execute }}
+echo "=== Complete System Verification ==="
+echo ""
+echo "=== DNS Configuration ==="
+echo -n "Code-server DNS: "
+dig code.yourdomain.com +short || echo "Not configured"
+echo ""
+echo "=== NPM Status ==="
+echo -n "NPM running: "
+docker ps | grep -q nginx-proxy-manager && echo "✓ Yes" || echo "✗ No"
+echo -n "NPM healthy: "
+[ "$(docker inspect nginx-proxy-manager --format='{{.State.Health.Status}}')" = "healthy" ] && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "=== Code-Server Status ==="
+echo -n "Code-server running: "
+docker ps | grep -q code-server && echo "✓ Yes" || echo "✗ No"
+echo -n "Code-server healthy: "
+[ "$(docker inspect code-server --format='{{.State.Health.Status}}')" = "healthy" ] && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "=== Connectivity ==="
+echo -n "NPM can reach code-server: "
+docker exec nginx-proxy-manager curl -s -o /dev/null -w "%{http_code}" http://code-server:8443 | grep -q "200\|30" && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "=== SSL/HTTPS ==="
+echo -n "HTTPS accessible: "
+curl -s -o /dev/null -w "%{http_code}" https://code.yourdomain.com | grep -q "200\|30" && echo "✓ Yes" || echo "✗ No"
+echo -n "HTTP redirects to HTTPS: "
+curl -s -I http://code.yourdomain.com | grep -q "301\|302" && echo "✓ Yes" || echo "✗ No"
+echo ""
+echo "If all checks show ✓, your setup is complete!"
+```
+
+**Replace `yourdomain.com` with your actual domain before running**
+
+### Document Your Complete Setup
+
+```{{ execute }}
+cat > ~/complete-setup-info.txt << EOF
+# Complete Week 2 Setup Information
+Date: $(date)
+
+## Domain Configuration
+Domain Registrar: Namecheap
+DNS Provider: Cloudflare
+Primary Domain: yourdomain.com
+
+## DNS Records
+code.yourdomain.com → $(hostname -I | awk '{print $1}')
+npm.yourdomain.com → $(hostname -I | awk '{print $1}')
+
+## Services
+- Nginx Proxy Manager: https://npm.yourdomain.com
+- Code-Server: https://code.yourdomain.com
+
+## SSL Certificates
+Issued by: Let's Encrypt
+Auto-renewal: Enabled
+Renewal period: 30 days before expiry
+
+## Container Status
+$(docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}")
+
+## Access Information
+NPM Admin: https://npm.yourdomain.com
+Code-Server: https://code.yourdomain.com
+Code-Server Password: (in password manager)
+NPM Admin Password: (in password manager)
+
+## Backup Locations
+NPM Backups: ~/backups/npm/
+Code-Server Backups: ~/backups/code-server/
+
+## Next Steps / Ideas
+- Add monitoring (Grafana + Prometheus)
+- Deploy more applications
+- Set up automated backups
+- Implement 2FA
+- Add CI/CD pipeline
+- Deploy database containers
+EOF
+```
+
+**Edit the file to add your actual domain:**
+
+`nano ~/complete-setup-info.txt` {{ execute }}
+
+View your documentation:
+
+`cat ~/complete-setup-info.txt` {{ execute }}
+
+---
+
+## Summary
+
+Congratulations! You've completed the entire Week 2 project!
+
+### What We Accomplished:
+
+✅ **Domain and DNS**
+- Purchased domain name
+- Configured Cloudflare as DNS provider
+- Changed nameservers in Namecheap
+- Created A records for subdomains
+
+✅ **SSL/TLS Certificates**
+- Requested Let's Encrypt certificates via NPM
+- Configured automatic renewal
+- Enabled HTTPS for all services
+
+✅ **Nginx Proxy Manager**
+- Created proxy hosts
+- Configured SSL termination
+- Set up domain-based routing
+
+✅ **Secure Code-Server Access**
+- Deployed code-server via Docker
+- Configured reverse proxy
+- Enabled HTTPS access
+- Password protected
+
+### Complete Architecture:
+
+```
+User Browser
+    ↓
+https://code.yourdomain.com
+    ↓
+Cloudflare DNS (A Record)
+    ↓
+Your Server (Hetzner)
+    ↓
+Nginx Proxy Manager (Port 443)
+  - SSL/TLS Termination (Let's Encrypt)
+  - Domain routing
+    ↓
+Docker Network (nginx-proxy-network)
+    ↓
+Code-Server Container (Port 8443)
+  - Password protected
+  - VS Code in browser
+    ↓
+Persistent Volumes
+  - Projects and configurations
+```
+
+### Security Achievements:
+
+- ✅ HTTPS encryption for all traffic
+- ✅ Automatic certificate renewal
+- ✅ Reverse proxy architecture
+- ✅ Password protection
+- ✅ No direct container exposure
+- ✅ Firewall configured
+- ✅ Professional domain setup
+
+### Skills Mastered:
+
+- Domain registration and management
+- DNS configuration (A records, nameservers)
+- Docker deployment and orchestration
+- Reverse proxy configuration
+- SSL/TLS certificate management
+- ACME protocol and Let's Encrypt
+- Production-ready deployment practices
+
+---
+
+## What's Next?
+
+### Immediate Next Steps:
+
+1. **Explore Code-Server**
+   - Install extensions
+   - Clone Git repositories
+   - Build projects
+   - Customize settings
+
+2. **Deploy More Services**
+   - Portainer (Docker UI)
+   - Database (PostgreSQL/MySQL)
+   - Monitoring (Grafana)
+   - Whatever you want!
+
+3. **Backup Everything**
+   - Automate backups with cron
+   - Test restore procedures
+   - Document recovery process
+
+### Advanced Topics to Explore:
+
+- **CI/CD Pipelines**: GitHub Actions, GitLab CI
+- **Monitoring**: Prometheus, Grafana, Loki
+- **Databases**: PostgreSQL, MySQL, Redis
+- **Authentication**: OAuth2, Authelia, 2FA
+- **High Availability**: Load balancing, failover
+- **Kubernetes**: Container orchestration
+
+---
+
+## Quick Reference
+
+### Access URLs
+- **Code-Server**: `https://code.yourdomain.com`
+- **NPM Admin**: `https://npm.yourdomain.com`
+
+### Key Commands
+
+```bash
+# Check DNS
+dig code.yourdomain.com +short
+
+# Check containers
+docker ps
+
+# NPM logs
+docker logs nginx-proxy-manager --tail=50
+
+# Code-server logs
+docker logs code-server --tail=50
+
+# Restart services
+cd ~/docker/nginx-proxy-manager && docker compose restart
+cd ~/docker/code-server && docker compose restart
+
+# Check SSL certificate
+echo | openssl s_client -connect code.yourdomain.com:443 2>/dev/null | openssl x509 -noout -dates
+
+# Backup
+# (See backup commands in previous labs)
+```
+
+### Important Files
+- **NPM Compose**: `~/docker/nginx-proxy-manager/docker-compose.yml`
+- **Code-Server Compose**: `~/docker/code-server/docker-compose.yml`
+- **Setup Docs**: `~/complete-setup-info.txt`
+- **Backups**: `~/backups/`
+
+---
+
+**Congratulations on completing Week 2! You now have a production-ready, secure development environment! 🚀🔒**
+
+**You've learned industry-standard practices that power millions of websites and applications.**
+
+**Keep building, keep learning, and most importantly - have fun! 🎉**

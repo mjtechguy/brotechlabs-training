@@ -1,0 +1,824 @@
+# Installing Docker and Docker Compose
+
+In this lab, you'll install Docker Engine and Docker Compose on your Ubuntu server. These tools are essential for running containerized applications.
+
+`This guide uses the official Docker installation method for Ubuntu 22.04 LTS` {{ note }}
+
+---
+
+## Prerequisites
+
+Before starting, ensure:
+
+- ✅ Ubuntu 22.04 LTS server (from previous lab)
+- ✅ SSH access with root or sudo privileges
+- ✅ System is updated (from 01-ubuntu-server-prep.mdcl)
+- ✅ Internet connectivity
+
+---
+
+## Part 1: Understand What We're Installing
+
+### What is Docker Engine?
+
+**Docker Engine** = The core Docker runtime that runs containers
+
+**Components:**
+- **Docker Daemon** (`dockerd`): Background service that manages containers
+- **Docker CLI** (`docker`): Command-line tool to interact with daemon
+- **containerd**: Container runtime
+- **runc**: Low-level container runtime
+
+### What is Docker Compose?
+
+**Docker Compose** = Tool for defining and running multi-container applications
+
+**Why We Need It:**
+- Manage multiple containers with one file
+- Simple YAML configuration
+- One command to start/stop entire stack
+- Perfect for our Nginx Proxy Manager + Code-Server setup
+
+### Installation Methods
+
+**Method 1: Docker's Official Repository (Recommended)**
+- Latest stable version
+- Automatic updates via apt
+- We'll use this method
+
+**Method 2: Convenience Script**
+- Quick but less control
+- Not recommended for production
+
+**Method 3: Manual DEB package**
+- No automatic updates
+- More complex
+
+---
+
+## Part 2: Remove Old Docker Versions (If Any)
+
+### Why Remove Old Versions?
+
+Old Docker installations can conflict with new ones.
+
+### Uninstall Conflicting Packages
+
+`for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc; do apt remove -y $pkg; done` {{ execute }}
+
+`Don't worry if some packages aren't found - that's normal for a fresh server` {{ info }}
+
+### Verify Removal
+
+Check if Docker is still present:
+
+`docker --version 2>/dev/null || echo "Docker not found - good!"` {{ execute }}
+
+**Expected output:** "Docker not found - good!"
+
+---
+
+## Part 3: Set Up Docker's Official Repository
+
+### Add Docker's GPG Key
+
+Docker signs packages with a GPG key for security.
+
+Create directory for keyrings:
+
+`install -m 0755 -d /etc/apt/keyrings` {{ execute }}
+
+Download Docker's GPG key:
+
+`curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc` {{ execute }}
+
+Set proper permissions:
+
+`chmod a+r /etc/apt/keyrings/docker.asc` {{ execute }}
+
+### Add Docker Repository to APT Sources
+
+```{{ execute }}
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+```
+
+**What this does:**
+- Adds Docker's official repository
+- Uses your system architecture (amd64, arm64, etc.)
+- Uses Ubuntu version codename (jammy for 22.04)
+- Points to stable release channel
+
+### Update Package Index
+
+`apt update` {{ execute }}
+
+### Verify Docker Repository Added
+
+`apt-cache policy docker-ce | head -10` {{ execute }}
+
+**Expected output:** Should show Docker repository URLs
+
+---
+
+## Part 4: Install Docker Engine
+
+### Install Docker Packages
+
+`apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` {{ execute }}
+
+**Packages installed:**
+- `docker-ce`: Docker Community Edition engine
+- `docker-ce-cli`: Docker command-line interface
+- `containerd.io`: Container runtime
+- `docker-buildx-plugin`: Enhanced build features
+- `docker-compose-plugin`: Docker Compose V2 (modern version)
+
+`Installation takes 1-2 minutes` {{ info }}
+
+### Verify Docker Installation
+
+Check Docker version:
+
+`docker --version` {{ execute }}
+
+**Expected output:** `Docker version 24.x.x` or newer
+
+Check Docker Compose version:
+
+`docker compose version` {{ execute }}
+
+**Expected output:** `Docker Compose version v2.x.x` or newer
+
+`Note: Docker Compose V2 uses 'docker compose' (space), not 'docker-compose' (hyphen)` {{ tip }}
+
+---
+
+## Part 5: Verify Docker is Running
+
+### Check Docker Service Status
+
+`systemctl status docker` {{ execute }}
+
+**Expected output:**
+- `Active: active (running)` in green
+- Press `q` to exit
+
+### Enable Docker to Start on Boot
+
+`systemctl enable docker` {{ execute }}
+
+**Expected output:** Docker is already enabled by default
+
+### Test Docker with Hello World
+
+Run Docker's test container:
+
+`docker run hello-world` {{ execute }}
+
+**What happens:**
+1. Docker downloads `hello-world` image
+2. Creates a container from the image
+3. Runs the container
+4. Container prints message and exits
+
+**Expected output:** Message starting with "Hello from Docker!"
+
+`If you see the hello message, Docker is working correctly!` {{ tip }}
+
+---
+
+## Part 6: Configure Docker (Optional but Recommended)
+
+### Configure Docker to Use JSON Logging Driver
+
+Create Docker daemon configuration:
+
+```{{ execute }}
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json << 'EOF'
+{
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  }
+}
+EOF
+```
+
+**What this does:**
+- Limits log file size to 10MB per container
+- Keeps maximum 3 log files
+- Prevents disk space issues from container logs
+
+### Restart Docker to Apply Configuration
+
+`systemctl restart docker` {{ execute }}
+
+### Verify Configuration Applied
+
+`docker info | grep -A 5 "Logging Driver"` {{ execute }}
+
+**Expected output:**
+```
+Logging Driver: json-file
+```
+
+---
+
+## Part 7: Configure Docker User Permissions (Optional)
+
+### Add User to Docker Group
+
+`If you created a non-root user in the previous lab, add them to the docker group` {{ info }}
+
+**For root user (current):**
+
+Docker already works for root. Skip to Part 8.
+
+**For non-root user:**
+
+Add user to docker group (replace `dockeruser` with your username):
+
+`usermod -aG docker dockeruser` {{ copy }}
+
+**Log out and back in for changes to take effect**
+
+### Verify Non-Root Docker Access
+
+Switch to non-root user:
+
+`su - dockeruser` {{ copy }}
+
+Test Docker:
+
+`docker run hello-world` {{ copy }}
+
+Exit back to root:
+
+`exit` {{ copy }}
+
+`For this lab, we'll continue as root for simplicity` {{ note }}
+
+---
+
+## Part 8: Clean Up Test Containers
+
+### List All Containers
+
+`docker ps -a` {{ execute }}
+
+**You should see:**
+- hello-world container (Exited)
+
+### Remove Test Container
+
+`docker rm $(docker ps -aq)` {{ execute }}
+
+### Remove Test Image
+
+`docker rmi hello-world` {{ execute }}
+
+### Verify Cleanup
+
+`docker ps -a` {{ execute }}
+
+**Expected output:** Empty list (no containers)
+
+`docker images` {{ execute }}
+
+**Expected output:** Empty list (no images)
+
+---
+
+## Part 9: Install Docker Compose Standalone (Backup Method)
+
+### Why Standalone Docker Compose?
+
+Docker Compose V2 is installed as a plugin (`docker compose`), but some tools expect standalone `docker-compose` command.
+
+### Check if Standalone is Needed
+
+`docker-compose --version 2>/dev/null || echo "Standalone not installed"` {{ execute }}
+
+### Install Standalone Docker Compose (Optional)
+
+Download latest version:
+
+`curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose` {{ execute }}
+
+Make it executable:
+
+`chmod +x /usr/local/bin/docker-compose` {{ execute }}
+
+Verify installation:
+
+`docker-compose --version` {{ execute }}
+
+**Expected output:** `Docker Compose version v2.x.x`
+
+`Both 'docker compose' and 'docker-compose' will now work` {{ tip }}
+
+---
+
+## Part 10: Test Docker Compose
+
+### Create Test Compose File
+
+```{{ execute }}
+mkdir -p ~/docker-test
+cd ~/docker-test
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  nginx-test:
+    image: nginx:alpine
+    container_name: test-nginx
+    ports:
+      - "8888:80"
+    restart: unless-stopped
+EOF
+```
+
+### Start Test Container with Docker Compose
+
+`docker compose up -d` {{ execute }}
+
+**What this does:**
+- Pulls nginx:alpine image
+- Creates container named test-nginx
+- Maps port 8888 on host to port 80 in container
+- Starts container in detached mode (-d)
+
+### Verify Container is Running
+
+`docker compose ps` {{ execute }}
+
+**Expected output:** test-nginx in "Up" state
+
+### Test the Nginx Container
+
+`curl http://localhost:8888` {{ execute }}
+
+**Expected output:** HTML from nginx welcome page
+
+### Stop and Remove Test Container
+
+`docker compose down` {{ execute }}
+
+### Clean Up Test Directory
+
+`cd ~ && rm -rf ~/docker-test` {{ execute }}
+
+---
+
+## Part 11: Understanding Docker Networks
+
+### List Default Docker Networks
+
+`docker network ls` {{ execute }}
+
+**You should see:**
+- `bridge`: Default network for containers
+- `host`: Use host's network directly
+- `none`: No network access
+
+### Create Custom Network for Our Project
+
+`docker network create nginx-proxy-network` {{ execute }}
+
+**Why create a custom network?**
+- Containers can communicate by name
+- Better isolation
+- More control over networking
+
+### Verify Network Created
+
+`docker network ls | grep nginx-proxy` {{ execute }}
+
+### Inspect Network Details
+
+`docker network inspect nginx-proxy-network` {{ execute }}
+
+`Our containers will use this network to communicate` {{ info }}
+
+---
+
+## Part 12: Configure Docker Volumes Location (Optional)
+
+### Check Current Docker Storage
+
+`docker info | grep -E "Docker Root Dir|Storage Driver"` {{ execute }}
+
+**Default location:** `/var/lib/docker`
+
+### Check Available Disk Space
+
+`df -h /var/lib/docker` {{ execute }}
+
+`Ensure you have at least 10GB free for Docker images and containers` {{ warning }}
+
+### Create Named Volumes for Our Services
+
+Create volumes for persistent data:
+
+`docker volume create npm-data` {{ execute }}
+
+`docker volume create npm-letsencrypt` {{ execute }}
+
+`docker volume create code-server-data` {{ execute }}
+
+### List All Volumes
+
+`docker volume ls` {{ execute }}
+
+**Expected output:** Three volumes listed
+
+### Inspect Volume Details
+
+`docker volume inspect npm-data` {{ execute }}
+
+**Note the "Mountpoint":** This is where data is stored on host
+
+---
+
+## Part 13: Docker System Information
+
+### View Comprehensive Docker Info
+
+`docker info` {{ execute }}
+
+**Key information:**
+- Server Version
+- Storage Driver
+- Logging Driver
+- Plugins (volume, network, log)
+- Swarm (inactive for now)
+- CPUs, Total Memory
+
+### Check Docker Disk Usage
+
+`docker system df` {{ execute }}
+
+**Shows:**
+- Images
+- Containers
+- Local Volumes
+- Build Cache
+
+`Keep an eye on disk usage as you deploy containers` {{ tip }}
+
+---
+
+## Part 14: Docker Security Best Practices
+
+### Check Docker Security Settings
+
+View Docker security features:
+
+`docker info | grep -E "Security|seccomp|AppArmor"` {{ execute }}
+
+### Enable Docker Content Trust (Optional, Production)
+
+For production environments, enable image signature verification:
+
+`export DOCKER_CONTENT_TRUST=1` {{ copy }}
+
+`This forces Docker to verify image signatures. Skip for learning environment.` {{ note }}
+
+### Scan Images for Vulnerabilities (If Available)
+
+Docker Scout can scan images:
+
+`docker scout quickview 2>/dev/null || echo "Docker Scout not configured"` {{ execute }}
+
+---
+
+## Part 15: Useful Docker Commands Reference
+
+### Image Management
+
+`docker images` {{ copy }}
+
+`docker pull IMAGE_NAME` {{ copy }}
+
+`docker rmi IMAGE_NAME` {{ copy }}
+
+`docker image prune -a` {{ copy }}
+
+### Container Management
+
+`docker ps` {{ copy }}
+
+`docker ps -a` {{ copy }}
+
+`docker run -d --name NAME IMAGE` {{ copy }}
+
+`docker stop CONTAINER` {{ copy }}
+
+`docker start CONTAINER` {{ copy }}
+
+`docker restart CONTAINER` {{ copy }}
+
+`docker rm CONTAINER` {{ copy }}
+
+`docker logs CONTAINER` {{ copy }}
+
+`docker logs -f CONTAINER` {{ copy }}
+
+`docker exec -it CONTAINER bash` {{ copy }}
+
+### Docker Compose
+
+`docker compose up -d` {{ copy }}
+
+`docker compose down` {{ copy }}
+
+`docker compose ps` {{ copy }}
+
+`docker compose logs -f` {{ copy }}
+
+`docker compose restart` {{ copy }}
+
+### System Management
+
+`docker system df` {{ copy }}
+
+`docker system prune` {{ copy }}
+
+`docker system prune -a --volumes` {{ copy }}
+
+### Volume Management
+
+`docker volume ls` {{ copy }}
+
+`docker volume create NAME` {{ copy }}
+
+`docker volume rm NAME` {{ copy }}
+
+`docker volume inspect NAME` {{ copy }}
+
+### Network Management
+
+`docker network ls` {{ copy }}
+
+`docker network create NAME` {{ copy }}
+
+`docker network rm NAME` {{ copy }}
+
+`docker network inspect NAME` {{ copy }}
+
+---
+
+## Part 16: Create Docker Helper Script
+
+### Create Useful Docker Aliases
+
+```{{ execute }}
+cat >> ~/.bashrc << 'EOF'
+
+# Docker Aliases
+alias dps='docker ps'
+alias dpsa='docker ps -a'
+alias di='docker images'
+alias dex='docker exec -it'
+alias dl='docker logs'
+alias dlf='docker logs -f'
+alias dcu='docker compose up -d'
+alias dcd='docker compose down'
+alias dcl='docker compose logs -f'
+EOF
+```
+
+### Reload Bash Configuration
+
+`source ~/.bashrc` {{ execute }}
+
+### Test Aliases
+
+`dps` {{ execute }}
+
+**Expected output:** Empty list (no running containers)
+
+`You can now use 'dps' instead of 'docker ps'!` {{ tip }}
+
+---
+
+## Part 17: Pre-Deployment Checklist
+
+### Verify Docker Installation
+
+Run comprehensive verification:
+
+```{{ execute }}
+echo "=== Docker Installation Checklist ==="
+echo ""
+echo -n "Docker Engine installed: "
+docker --version > /dev/null 2>&1 && echo "✓ $(docker --version)" || echo "✗ Not installed"
+echo -n "Docker Compose V2 installed: "
+docker compose version > /dev/null 2>&1 && echo "✓ $(docker compose version)" || echo "✗ Not installed"
+echo -n "Docker service running: "
+systemctl is-active --quiet docker && echo "✓ Active" || echo "✗ Inactive"
+echo -n "Docker enabled on boot: "
+systemctl is-enabled --quiet docker && echo "✓ Enabled" || echo "✗ Disabled"
+echo -n "Custom network created: "
+docker network ls | grep -q nginx-proxy-network && echo "✓ nginx-proxy-network exists" || echo "✗ Not created"
+echo -n "Volumes created: "
+[ $(docker volume ls | grep -c "npm\|code-server") -eq 3 ] && echo "✓ All volumes created" || echo "✗ Missing volumes"
+echo ""
+echo "If all items show ✓, you're ready for container deployment!"
+```
+
+### Test Docker with Real Container
+
+Pull and run nginx to test everything works:
+
+`docker run -d --name test-nginx -p 8080:80 nginx:alpine` {{ execute }}
+
+Test it:
+
+`curl http://localhost:8080 | head -5` {{ execute }}
+
+Stop and remove:
+
+`docker stop test-nginx && docker rm test-nginx` {{ execute }}
+
+---
+
+## Troubleshooting
+
+### Docker Daemon Won't Start
+
+Check Docker logs:
+
+`journalctl -u docker -n 50 --no-pager` {{ execute }}
+
+Restart Docker:
+
+`systemctl restart docker` {{ execute }}
+
+Check status:
+
+`systemctl status docker` {{ execute }}
+
+### Permission Denied Errors
+
+If you see "permission denied" when running Docker:
+
+**Check if Docker socket exists:**
+
+`ls -la /var/run/docker.sock` {{ execute }}
+
+**Fix socket permissions (temporary):**
+
+`chmod 666 /var/run/docker.sock` {{ copy }}
+
+**Proper fix - add user to docker group:**
+
+`usermod -aG docker $USER` {{ copy }}
+
+### Cannot Connect to Docker Daemon
+
+**Check if Docker is running:**
+
+`systemctl status docker` {{ execute }}
+
+**Start Docker if stopped:**
+
+`systemctl start docker` {{ execute }}
+
+**Check Docker socket:**
+
+`ls -la /var/run/docker.sock` {{ execute }}
+
+### Disk Space Issues
+
+**Check Docker disk usage:**
+
+`docker system df` {{ execute }}
+
+**Clean up unused resources:**
+
+`docker system prune -a --volumes` {{ copy }}
+
+`This removes ALL unused containers, images, networks, and volumes!` {{ danger }}
+
+**Safer cleanup (keeps volumes):**
+
+`docker system prune -a` {{ copy }}
+
+### Network Issues
+
+**Reset Docker networks:**
+
+`docker network prune` {{ execute }}
+
+**Recreate custom network:**
+
+`docker network rm nginx-proxy-network` {{ copy }}
+
+`docker network create nginx-proxy-network` {{ copy }}
+
+### DNS Resolution Issues in Containers
+
+**Check Docker DNS settings:**
+
+`docker run --rm alpine nslookup google.com` {{ execute }}
+
+**If DNS fails, configure Docker DNS:**
+
+```{{ copy }}
+cat > /etc/docker/daemon.json << 'EOF'
+{
+  "dns": ["8.8.8.8", "8.8.4.4", "1.1.1.1"]
+}
+EOF
+systemctl restart docker
+```
+
+---
+
+## Summary
+
+Congratulations! Docker is now installed and configured on your server.
+
+### What We Accomplished:
+
+✅ **Docker Engine Installation**
+- Installed from official Docker repository
+- Verified with hello-world container
+- Configured logging settings
+
+✅ **Docker Compose Installation**
+- Installed Docker Compose V2 (plugin)
+- Installed standalone docker-compose
+- Tested with sample nginx container
+
+✅ **Docker Configuration**
+- Created custom network (nginx-proxy-network)
+- Created persistent volumes
+- Set up log rotation
+- Created helpful aliases
+
+✅ **Verification**
+- Tested Docker functionality
+- Verified Docker Compose works
+- Checked network and volume creation
+
+### Key Docker Concepts Learned:
+
+- **Images**: Templates for containers
+- **Containers**: Running instances of images
+- **Volumes**: Persistent data storage
+- **Networks**: Container communication
+- **Docker Compose**: Multi-container orchestration
+
+### Next Steps:
+
+1. **Deploy Nginx Proxy Manager** → `03-nginx-proxy-manager.mdcl`
+2. **Deploy Code-Server** → `04-code-server-docker.mdcl`
+3. **Configure DNS and SSL** → `05-dns-and-npm-config.mdcl`
+
+---
+
+## Quick Reference
+
+### Essential Docker Commands
+
+```bash
+# Container lifecycle
+docker run -d --name NAME IMAGE
+docker stop NAME
+docker start NAME
+docker restart NAME
+docker rm NAME
+
+# View containers
+docker ps               # Running
+docker ps -a            # All
+
+# View logs
+docker logs NAME
+docker logs -f NAME     # Follow
+
+# Execute commands
+docker exec -it NAME bash
+docker exec NAME COMMAND
+
+# Docker Compose
+docker compose up -d
+docker compose down
+docker compose ps
+docker compose logs -f
+
+# System maintenance
+docker system df        # Disk usage
+docker system prune     # Clean up
+docker volume ls        # List volumes
+docker network ls       # List networks
+```
+
+---
+
+**Docker is ready! Let's deploy Nginx Proxy Manager next! 🐳**
