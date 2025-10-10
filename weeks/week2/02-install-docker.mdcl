@@ -17,7 +17,329 @@ Before starting, ensure:
 
 ---
 
-## Part 1: Understand What We're Installing
+## Part 1: Understanding Containers and Docker
+
+### What are Containers?
+
+**Containers** = Lightweight, standalone packages that contain everything needed to run an application
+
+Think of containers like shipping containers:
+- **Standardized**: Works the same everywhere
+- **Isolated**: Contents don't interfere with each other
+- **Portable**: Can be moved between ships (servers) easily
+- **Efficient**: Takes up minimal space
+
+### Containers vs Virtual Machines
+
+```
+Virtual Machines (Old Way):
+┌─────────────────────────────────────┐
+│         Application                 │
+├─────────────────────────────────────┤
+│         Guest OS (Full Linux)       │  ← 1-2 GB per VM
+├─────────────────────────────────────┤
+│         Hypervisor (VMware/VBox)    │
+├─────────────────────────────────────┤
+│         Host OS                     │
+├─────────────────────────────────────┤
+│         Hardware                    │
+└─────────────────────────────────────┘
+
+Containers (Modern Way):
+┌─────────────────────────────────────┐
+│   App1  │  App2  │  App3            │
+├─────────┼────────┼──────────────────┤
+│       Container Runtime              │  ← 10-100 MB per container
+├─────────────────────────────────────┤
+│         Host OS                     │
+├─────────────────────────────────────┤
+│         Hardware                    │
+└─────────────────────────────────────┘
+```
+
+**Key Differences:**
+
+| Feature | Virtual Machines | Containers |
+|---------|-----------------|------------|
+| **Size** | Gigabytes (GB) | Megabytes (MB) |
+| **Startup** | Minutes | Seconds |
+| **Performance** | Slower (full OS) | Near-native speed |
+| **Isolation** | Complete (separate kernel) | Process-level (shared kernel) |
+| **Resource Usage** | Heavy | Light |
+| **Portability** | Limited | Excellent |
+
+`Containers share the host OS kernel, making them much lighter than VMs` {{ info }}
+
+### Why Use Containers?
+
+**1. Consistency ("Works on My Machine" Problem Solved)**
+
+Traditional deployment:
+```
+Developer: "It works on my laptop!"
+Server: "Error: Missing Python 3.9, wrong MySQL version, incompatible libraries..."
+```
+
+With containers:
+```
+Developer: "Here's the container"
+Server: "Running! Everything works exactly like your laptop."
+```
+
+**2. Isolation and Security**
+
+- Each application runs in its own environment
+- Dependencies don't conflict
+- Compromised container can't easily affect others
+- Resource limits prevent one app from consuming everything
+
+**3. Efficiency**
+
+- Start in seconds vs minutes for VMs
+- Run 10-100+ containers on one server
+- Minimal overhead (MB not GB)
+- Better resource utilization
+
+**4. Portability**
+
+- Build once, run anywhere
+- Development → Testing → Production (same container)
+- Works on laptop, cloud, bare metal
+- No vendor lock-in
+
+**5. Simplified Deployment**
+
+```bash
+# Traditional deployment (hours of work):
+1. Install dependencies
+2. Configure services
+3. Set up databases
+4. Fix version conflicts
+5. Debug environment issues
+6. Repeat for each server...
+
+# Container deployment (minutes):
+docker compose up -d
+# Done! Everything configured and running.
+```
+
+### Real-World Container Benefits
+
+**For This Week's Project:**
+
+Without containers:
+- Install Nginx manually (complex configuration)
+- Install Node.js for code-server
+- Manage SSL certificates manually
+- Configure reverse proxy rules in files
+- Risk breaking system packages
+- Difficult to update or rollback
+
+With containers:
+- `docker compose up -d` → Everything works
+- Web interface for Nginx management
+- Automatic SSL certificate renewal
+- Update with `docker compose pull && docker compose up -d`
+- Rollback by changing image version
+- No risk to host system
+
+### How Docker Works
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Developer's Laptop                    │
+│                                                          │
+│  1. Write Dockerfile (recipe for container)              │
+│  2. Build image: docker build -t myapp .                 │
+│  3. Test locally: docker run myapp                       │
+│  4. Push to registry: docker push myapp                  │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│                   Docker Hub / Registry                  │
+│          (Public or private image storage)               │
+└─────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────┐
+│                    Production Server                     │
+│                                                          │
+│  1. Pull image: docker pull myapp                        │
+│  2. Run container: docker run -d myapp                   │
+│  3. Container runs with exact same environment           │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Docker Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Docker Client                         │
+│              (docker command you type)                    │
+└──────────────────────────────────────────────────────────┘
+                           ↓
+┌──────────────────────────────────────────────────────────┐
+│                    Docker Daemon                          │
+│              (dockerd - manages everything)               │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐     │
+│  │              Container Management               │     │
+│  │  - Start/Stop containers                       │     │
+│  │  - Monitor resources                           │     │
+│  │  - Handle networking                           │     │
+│  └────────────────────────────────────────────────┘     │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐     │
+│  │              Image Management                   │     │
+│  │  - Pull images from registries                │     │
+│  │  - Build images from Dockerfiles              │     │
+│  │  - Store images locally                        │     │
+│  └────────────────────────────────────────────────┘     │
+│                                                          │
+│  ┌────────────────────────────────────────────────┐     │
+│  │           Volume & Network Management           │     │
+│  │  - Persistent data storage                     │     │
+│  │  - Container networking                        │     │
+│  └────────────────────────────────────────────────┘     │
+└──────────────────────────────────────────────────────────┘
+                           ↓
+┌──────────────────────────────────────────────────────────┐
+│                      Containers                           │
+│                                                          │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
+│  │   Nginx  │  │  MySQL   │  │ Code-    │              │
+│  │   Proxy  │  │ Database │  │ Server   │              │
+│  │  Manager │  │          │  │          │              │
+│  └──────────┘  └──────────┘  └──────────┘              │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Key Docker Concepts
+
+**1. Images**
+- Read-only templates for creating containers
+- Like a "recipe" or "blueprint"
+- Contains OS, application code, dependencies
+- Stored in layers (efficient storage and updates)
+
+**2. Containers**
+- Running instances of images
+- Isolated processes on host system
+- Have their own filesystem, network, process space
+- Stateless by default (data disappears when stopped)
+
+**3. Volumes**
+- Persistent data storage
+- Survives container deletion
+- Can be shared between containers
+- Used for databases, user files, configurations
+
+**4. Networks**
+- Allow containers to communicate
+- Isolated from host network by default
+- Containers can talk by name (like DNS)
+- Multiple network types (bridge, host, overlay)
+
+**5. Docker Compose**
+- Define multi-container applications in YAML
+- One file describes entire stack
+- Single command to start/stop everything
+- Perfect for development and production
+
+### Example: Our Week 2 Setup
+
+```yaml
+# docker-compose.yml - Defines entire infrastructure
+version: '3.8'
+
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager  # Pre-built image
+    ports:
+      - "80:80"      # HTTP
+      - "443:443"    # HTTPS
+      - "81:81"      # Admin panel
+    volumes:
+      - npm-data:/data              # Persistent storage
+      - npm-letsencrypt:/etc/letsencrypt
+    networks:
+      - nginx-proxy-network
+
+  code-server:
+    image: linuxserver/code-server
+    ports:
+      - "8443:8443"
+    volumes:
+      - code-server-data:/config
+    networks:
+      - nginx-proxy-network
+
+volumes:
+  npm-data:
+  npm-letsencrypt:
+  code-server-data:
+
+networks:
+  nginx-proxy-network:
+```
+
+**With this one file:**
+- ✅ Both services configured
+- ✅ Persistent data preserved
+- ✅ Containers can communicate
+- ✅ Ports exposed correctly
+- ✅ Start everything: `docker compose up -d`
+
+### Learn More About Docker
+
+**Official Docker Documentation:**
+- [Docker Overview](https://docs.docker.com/get-started/overview/) - Comprehensive introduction
+- [Docker Get Started Guide](https://docs.docker.com/get-started/) - Hands-on tutorial
+- [Best Practices](https://docs.docker.com/develop/dev-best-practices/) - Production tips
+
+**Understanding Containers:**
+- [What is a Container?](https://www.docker.com/resources/what-container/) - Docker's explanation
+- [Containers vs VMs](https://www.docker.com/blog/containers-replacing-virtual-machines/) - Detailed comparison
+- [Docker Architecture](https://docs.docker.com/get-started/overview/#docker-architecture) - How it all works
+
+**Interactive Learning:**
+- [Play with Docker](https://labs.play-with-docker.com/) - Free browser-based Docker playground
+- [Docker Curriculum](https://docker-curriculum.com/) - Comprehensive beginner guide
+- [Awesome Docker](https://github.com/veggiemonk/awesome-docker) - Curated resources
+
+**Video Tutorials:**
+- [Docker in 100 Seconds](https://www.youtube.com/watch?v=Gjnup-PuquQ) - Quick overview
+- [Docker Tutorial for Beginners](https://www.youtube.com/watch?v=fqMOX6JJhGo) - Full course
+- [Docker Compose Tutorial](https://www.youtube.com/watch?v=SXwC9fSwct8) - Multi-container apps
+
+**Advanced Topics:**
+- [Docker Security](https://docs.docker.com/engine/security/) - Securing containers
+- [Docker Networking](https://docs.docker.com/network/) - Deep dive into networking
+- [Dockerfile Best Practices](https://docs.docker.com/develop/develop-images/dockerfile_best-practices/) - Writing efficient Dockerfiles
+
+`Containers have revolutionized software deployment - learning Docker is an essential skill for modern DevOps` {{ tip }}
+
+### Why Containers Are Important for This Course
+
+**You'll learn industry-standard practices:**
+- Same tools used by Netflix, Spotify, Uber, and millions of companies
+- Skills directly transferable to production environments
+- Foundation for Kubernetes, cloud platforms, CI/CD
+
+**Makes complex setups simple:**
+- No manual dependency management
+- Reproducible environments
+- Easy to experiment (delete and recreate instantly)
+- Safe to break things (containers are disposable)
+
+**Prepares you for modern infrastructure:**
+- Microservices architecture
+- Cloud-native applications
+- DevOps workflows
+- Infrastructure as Code
+
+---
+
+## Part 2: Understand What We're Installing
 
 ### What is Docker Engine?
 
@@ -56,7 +378,7 @@ Before starting, ensure:
 
 ---
 
-## Part 2: Remove Old Docker Versions (If Any)
+## Part 3: Remove Old Docker Versions (If Any)
 
 ### Why Remove Old Versions?
 
@@ -78,7 +400,7 @@ Check if Docker is still present:
 
 ---
 
-## Part 3: Set Up Docker's Official Repository
+## Part 4: Set Up Docker's Official Repository
 
 ### Add Docker's GPG Key
 
@@ -120,7 +442,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 
 ---
 
-## Part 4: Install Docker Engine
+## Part 5: Install Docker Engine
 
 ### Install Docker Packages
 
@@ -153,7 +475,7 @@ Check Docker Compose version:
 
 ---
 
-## Part 5: Verify Docker is Running
+## Part 6: Verify Docker is Running
 
 ### Check Docker Service Status
 
@@ -187,7 +509,7 @@ Run Docker's test container:
 
 ---
 
-## Part 6: Configure Docker (Optional but Recommended)
+## Part 7: Configure Docker (Optional but Recommended)
 
 ### Configure Docker to Use JSON Logging Driver
 
@@ -226,7 +548,7 @@ Logging Driver: json-file
 
 ---
 
-## Part 7: Configure Docker User Permissions (Optional)
+## Part 8: Configure Docker User Permissions (Optional)
 
 ### Add User to Docker Group
 
@@ -262,7 +584,7 @@ Exit back to root:
 
 ---
 
-## Part 8: Clean Up Test Containers
+## Part 9: Clean Up Test Containers
 
 ### List All Containers
 
@@ -291,7 +613,7 @@ Exit back to root:
 
 ---
 
-## Part 9: Install Docker Compose Standalone (Backup Method)
+## Part 10: Install Docker Compose Standalone (Backup Method)
 
 ### Why Standalone Docker Compose?
 
@@ -321,7 +643,7 @@ Verify installation:
 
 ---
 
-## Part 10: Test Docker Compose
+## Part 11: Test Docker Compose
 
 ### Create Test Compose File
 
@@ -373,7 +695,7 @@ EOF
 
 ---
 
-## Part 11: Understanding Docker Networks
+## Part 12: Understanding Docker Networks
 
 ### List Default Docker Networks
 
@@ -405,7 +727,7 @@ EOF
 
 ---
 
-## Part 12: Configure Docker Volumes Location (Optional)
+## Part 13: Configure Docker Volumes Location (Optional)
 
 ### Check Current Docker Storage
 
@@ -443,7 +765,7 @@ Create volumes for persistent data:
 
 ---
 
-## Part 13: Docker System Information
+## Part 14: Docker System Information
 
 ### View Comprehensive Docker Info
 
@@ -471,7 +793,7 @@ Create volumes for persistent data:
 
 ---
 
-## Part 14: Docker Security Best Practices
+## Part 15: Docker Security Best Practices
 
 ### Check Docker Security Settings
 
@@ -495,7 +817,7 @@ Docker Scout can scan images:
 
 ---
 
-## Part 15: Useful Docker Commands Reference
+## Part 16: Useful Docker Commands Reference
 
 ### Image Management
 
@@ -571,7 +893,7 @@ Docker Scout can scan images:
 
 ---
 
-## Part 16: Create Docker Helper Script
+## Part 17: Create Docker Helper Script
 
 ### Create Useful Docker Aliases
 
@@ -605,7 +927,7 @@ EOF
 
 ---
 
-## Part 17: Pre-Deployment Checklist
+## Part 18: Pre-Deployment Checklist
 
 ### Verify Docker Installation
 

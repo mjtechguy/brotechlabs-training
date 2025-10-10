@@ -49,11 +49,10 @@ User types: https://code.yourdomain.com
 
 ### What We'll Configure
 
-1. **Namecheap**: Add Cloudflare nameservers
-2. **Cloudflare**: Create A record pointing to server
-3. **NPM**: Create proxy host for code-server
-4. **NPM**: Request SSL certificate from Let's Encrypt
-5. **Test**: Access code-server via HTTPS
+1. **Cloudflare**: Create A record pointing to server (nameservers already configured)
+2. **NPM**: Create proxy host for code-server
+3. **NPM**: Request SSL certificate from Let's Encrypt
+4. **Test**: Access code-server via HTTPS
 
 ---
 
@@ -91,124 +90,23 @@ User types: https://code.yourdomain.com
 
 `These steps are performed in your web browser on Cloudflare's website` {{ info }}
 
-### Step 1: Create Cloudflare Account
+`Domain and nameservers should already be configured from manual setup` {{ tip }}
+
+### Step 1: Access Cloudflare Dashboard
 
 1. Go to [cloudflare.com](https://cloudflare.com)
-2. Click **Sign Up**
-3. Enter email and create password
-4. Verify email address
+2. Log into your account
+3. Select your domain from the dashboard
 
-`Cloudflare is free for our use case` {{ tip }}
+**Verify domain status:**
+- Status should show "Active"
+- Nameservers should be confirmed
 
-### Step 2: Add Your Domain to Cloudflare
-
-1. Log into Cloudflare dashboard
-2. Click **Add a Site**
-3. Enter your domain (e.g., `mydevlab.com`)
-4. Click **Add Site**
-5. Select **Free Plan**
-6. Click **Continue**
-
-### Step 3: Review Existing DNS Records
-
-Cloudflare will scan for existing DNS records.
-
-**You might see:**
-- Existing A records
-- MX records (if email configured)
-- Other records
-
-**For now:**
-- Note what's there
-- We'll add our own A record next
-- Leave existing records as-is (unless you know they're wrong)
-
-Click **Continue**
-
-### Step 4: Note Cloudflare Nameservers
-
-Cloudflare will show you **two nameservers**, like:
-
-```
-alexa.ns.cloudflare.com
-chad.ns.cloudflare.com
-```
-
-`Copy these nameservers - you'll add them to Namecheap` {{ warning }}
-
-**Don't click "Done, check nameservers" yet**
-
-Keep this page open and proceed to Namecheap.
-
----
-
-## Part 4: Configure Namecheap (Domain Registrar)
-
-`These steps are performed in your web browser on Namecheap's website` {{ info }}
-
-### Step 1: Log into Namecheap
-
-1. Go to [namecheap.com](https://namecheap.com)
-2. Click **Sign In**
-3. Enter your credentials
-4. Go to **Domain List**
-
-### Step 2: Manage Your Domain
-
-1. Find your domain in the list
-2. Click **Manage** next to your domain
-
-### Step 3: Change Nameservers
-
-1. Scroll to **Nameservers** section
-2. Select **Custom DNS** from dropdown
-3. Enter Cloudflare's nameservers:
-   - Nameserver 1: `alexa.ns.cloudflare.com` (use your actual nameserver)
-   - Nameserver 2: `chad.ns.cloudflare.com` (use your actual nameserver)
-4. Click **✓** (checkmark) to save
-
-`Nameserver changes can take 15 minutes to 24 hours to propagate` {{ info }}
-
-### Step 4: Verify Nameserver Update
-
-Wait 5-10 minutes, then check:
-
-**Using online tool:**
-- Go to [whatsmydns.net](https://whatsmydns.net)
-- Select "NS" record type
-- Enter your domain
-- Check if Cloudflare nameservers appear
-
-**Using command line:**
-
-`dig NS yourdomain.com +short` {{ copy }}
-
-**Expected output:** Cloudflare nameservers
-
-`Or use: nslookup -type=NS yourdomain.com` {{ tip }}
-
----
-
-## Part 5: Complete Cloudflare Setup
-
-### Step 1: Confirm Nameservers in Cloudflare
-
-1. Return to Cloudflare dashboard
-2. Click **Done, check nameservers**
-3. Cloudflare will verify the change
-
-**If successful:**
-- Status changes to "Active"
-- You'll receive confirmation email
-
-**If not yet updated:**
-- Cloudflare shows "Pending"
-- Check back in 15-30 minutes
-- Cloudflare will email when active
+`If domain is not yet active, wait for nameserver propagation to complete` {{ warning }}
 
 ### Step 2: Configure SSL/TLS Settings
 
-1. In Cloudflare dashboard, click on your domain
+1. In Cloudflare dashboard, select your domain
 2. Go to **SSL/TLS** tab
 3. Set encryption mode to **Full** (not Full Strict)
 
@@ -237,7 +135,7 @@ Wait 5-10 minutes, then check:
 
 ---
 
-## Part 6: Create DNS A Record
+## Part 4: Create DNS A Record
 
 `This step is done in Cloudflare dashboard` {{ info }}
 
@@ -302,7 +200,7 @@ Click **Save**
 
 ---
 
-## Part 7: Test DNS Resolution
+## Part 5: Test DNS Resolution
 
 ### Test from Your Server
 
@@ -346,7 +244,7 @@ Use online tool:
 
 ---
 
-## Part 8: Access NPM Admin Panel
+## Part 6: Access NPM Admin Panel
 
 ### Get NPM Admin URL
 
@@ -372,7 +270,7 @@ You can access NPM via:
 
 ---
 
-## Part 9: Create Proxy Host for Code-Server
+## Part 7: Create Proxy Host for Code-Server
 
 `These steps are performed in NPM web interface` {{ info }}
 
@@ -493,7 +391,7 @@ In NPM Proxy Hosts list:
 
 ---
 
-## Part 10: Test Code-Server Access via HTTPS
+## Part 8: Test Code-Server Access via HTTPS
 
 ### Access Code-Server
 
@@ -525,7 +423,7 @@ In NPM Proxy Hosts list:
 
 ---
 
-## Part 11: Create NPM Proxy Host (Optional)
+## Part 9: Create NPM Proxy Host (Optional)
 
 `Secure NPM admin panel with its own subdomain and SSL` {{ info }}
 
@@ -573,7 +471,7 @@ Click **Save**
 
 ---
 
-## Part 12: Verify SSL Certificates
+## Part 10: Verify SSL Certificates
 
 ### Check Certificate in Browser
 
@@ -614,7 +512,7 @@ In NPM dashboard:
 
 ---
 
-## Part 13: Understanding SSL Auto-Renewal
+## Part 11: Understanding SSL Auto-Renewal
 
 ### How NPM Handles Renewal
 
@@ -650,7 +548,7 @@ In NPM dashboard:
 
 ---
 
-## Part 14: Test Complete Request Flow
+## Part 12: Test Complete Request Flow
 
 ### Test HTTP to HTTPS Redirect
 
@@ -691,7 +589,7 @@ Use online tools:
 
 ---
 
-## Part 15: Troubleshooting
+## Part 13: Troubleshooting
 
 ### Certificate Request Failed
 
@@ -764,7 +662,7 @@ Should get HTTP response
 
 ---
 
-## Part 16: Security Best Practices
+## Part 14: Security Best Practices
 
 ### Restrict NPM Admin Access
 
@@ -823,7 +721,7 @@ NPM doesn't have built-in 2FA, but you can:
 
 ---
 
-## Part 17: Adding More Services
+## Part 15: Adding More Services
 
 ### Deploy Additional Applications
 
@@ -873,7 +771,7 @@ docker run -d \
 
 ---
 
-## Part 18: Final Verification
+## Part 16: Final Verification
 
 ### Run Complete System Check
 

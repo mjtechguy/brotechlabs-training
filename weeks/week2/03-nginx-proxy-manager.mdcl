@@ -710,7 +710,695 @@ Instead of exposing port 81, use SSH tunnel:
 
 ---
 
-## Part 17: NPM Maintenance
+## Part 17: Cloudflare Integration and IP Allowlisting
+
+### Understanding Cloudflare Proxy vs DNS-Only
+
+When using Cloudflare, you have two options for DNS records:
+
+**DNS-Only (Gray Cloud) ☁️:**
+- Traffic goes directly from user to your server
+- Your server's real IP is visible in DNS
+- No Cloudflare protection (DDoS, WAF, caching)
+- Simpler setup, easier troubleshooting
+
+**Proxied (Orange Cloud) 🟠:**
+- Traffic routes through Cloudflare's network first
+- Your server's real IP is hidden
+- Cloudflare provides DDoS protection, WAF, caching
+- SSL termination happens at Cloudflare
+
+`For production environments, proxied mode (orange cloud) is highly recommended` {{ tip }}
+
+### Why Use Cloudflare Proxy?
+
+**Security Benefits:**
+1. **DDoS Protection**: Cloudflare absorbs attacks before they reach your server
+2. **Hide Origin IP**: Attackers can't directly target your server
+3. **Web Application Firewall (WAF)**: Blocks common attacks automatically
+4. **Rate Limiting**: Prevents brute force attacks
+5. **Bot Protection**: Filters malicious bot traffic
+
+**Performance Benefits:**
+1. **Global CDN**: Content cached at edge locations worldwide
+2. **Faster DNS**: Cloudflare's DNS is extremely fast
+3. **HTTP/2 & HTTP/3**: Modern protocols for better performance
+4. **Image Optimization**: Automatic image compression
+
+`Without IP allowlisting, anyone can bypass Cloudflare by accessing your server IP directly` {{ warning }}
+
+### The Problem: Direct IP Access
+
+Even with Cloudflare proxy enabled, if someone discovers your server's IP address:
+
+```
+Attacker → http://YOUR_SERVER_IP → Your Server
+           (bypasses Cloudflare completely)
+```
+
+**This means:**
+- No DDoS protection
+- No WAF filtering
+- No rate limiting
+- Direct attacks on your server
+
+**The Solution: IP Allowlisting**
+
+Only allow traffic from Cloudflare's IP ranges:
+
+```
+User → Cloudflare (Protection/Caching) → Your Server (Only from CF IPs)
+                                               ↓
+Direct Access Attempt → YOUR_SERVER_IP → BLOCKED by firewall
+```
+
+### Step 1: Understanding Cloudflare IP Ranges
+
+Cloudflare publishes their IP ranges at: [https://www.cloudflare.com/ips/](https://www.cloudflare.com/ips/)
+
+**IPv4 Ranges (as of 2024):**
+```
+173.245.48.0/20
+103.21.244.0/22
+103.22.200.0/22
+103.31.4.0/22
+141.101.64.0/18
+108.162.192.0/18
+190.93.240.0/20
+188.114.96.0/20
+197.234.240.0/22
+198.41.128.0/17
+162.158.0.0/15
+104.16.0.0/13
+104.24.0.0/14
+172.64.0.0/13
+131.0.72.0/22
+```
+
+**IPv6 Ranges:**
+```
+2400:cb00::/32
+2606:4700::/32
+2803:f800::/32
+2405:b500::/32
+2405:8100::/32
+2a06:98c0::/29
+2c0f:f248::/32
+```
+
+`These IP ranges can change - always check Cloudflare's official list` {{ info }}
+
+### Step 2: Choose Firewall Strategy
+
+You can implement IP allowlisting at two levels:
+
+**Option 1: Ubuntu UFW (Software Firewall)**
+- Configured on the server itself
+- More flexible, easier to update
+- Recommended for most users
+
+**Option 2: Hetzner Cloud Firewall (Network Firewall)**
+- Configured in Hetzner Cloud Console
+- Traffic blocked before reaching server
+- Better performance, additional security layer
+
+**Option 3: Both (Defense in Depth)**
+- Most secure approach
+- Redundant protection
+- Recommended for production
+
+`We'll cover both methods - you can choose one or use both` {{ tip }}
+
+### Step 3: Option 1 - Configure UFW (Ubuntu Firewall)
+
+#### Create Cloudflare IP Update Script
+
+First, create a script to fetch and apply Cloudflare IPs:
+
+```{{ execute }}
+cat > ~/update-cloudflare-ips.sh << 'EOF'
+#!/bin/bash
+
+# Update Cloudflare IP allowlist in UFW
+# This script should be run periodically to keep IPs up to date
+
+echo "Fetching Cloudflare IP ranges..."
+
+# Fetch IPv4 ranges
+CF_IPV4=$(curl -s https://www.cloudflare.com/ips-v4)
+
+# Fetch IPv6 ranges (optional)
+CF_IPV6=$(curl -s https://www.cloudflare.com/ips-v6)
+
+# Check if we got valid data
+if [ -z "$CF_IPV4" ]; then
+    echo "Error: Failed to fetch Cloudflare IPs"
+    exit 1
+fi
+
+echo "Removing old Cloudflare rules for ports 80 and 443..."
+
+# Remove all existing rules for ports 80 and 443
+# This ensures we don't have duplicate or outdated rules
+ufw --force delete allow 80/tcp
+ufw --force delete allow 443/tcp
+
+echo "Adding new Cloudflare IP rules..."
+
+# Add rules for each Cloudflare IPv4 range
+for ip in $CF_IPV4; do
+    echo "Allowing $ip on port 80"
+    ufw allow from $ip to any port 80 proto tcp comment 'Cloudflare IP'
+
+    echo "Allowing $ip on port 443"
+    ufw allow from $ip to any port 443 proto tcp comment 'Cloudflare IP'
+done
+
+# Optionally add IPv6 ranges (uncomment if you use IPv6)
+# for ip in $CF_IPV6; do
+#     ufw allow from $ip to any port 80 proto tcp comment 'Cloudflare IPv6'
+#     ufw allow from $ip to any port 443 proto tcp comment 'Cloudflare IPv6'
+# done
+
+# Add your own IP for direct SSH access (IMPORTANT!)
+# Uncomment and replace with your IP to maintain SSH access
+# MY_IP="YOUR_IP_ADDRESS"
+# ufw allow from $MY_IP to any port 22 proto tcp comment 'My SSH Access'
+
+echo "Reloading UFW..."
+ufw reload
+
+echo "Done! Cloudflare IPs have been updated."
+echo ""
+echo "Current UFW status:"
+ufw status numbered | grep -E '80|443' | head -20
+
+EOF
+```
+
+#### Make Script Executable
+
+`chmod +x ~/update-cloudflare-ips.sh` {{ execute }}
+
+#### Review and Edit Script
+
+**IMPORTANT: Before running, consider:**
+
+1. **Existing Access**: This script will block non-Cloudflare traffic on ports 80/443
+2. **SSH Access**: Make sure you can access via SSH (port 22 should remain open)
+3. **Testing**: You might want to test with one IP first
+
+`nano ~/update-cloudflare-ips.sh` {{ execute }}
+
+**Optional: Add your IP for testing:**
+- Uncomment the `MY_IP` lines
+- Replace `YOUR_IP_ADDRESS` with your actual IP
+- This ensures you can still access directly if needed
+
+#### Run the Script
+
+`sudo ~/update-cloudflare-ips.sh` {{ execute }}
+
+**Expected output:**
+```
+Fetching Cloudflare IP ranges...
+Removing old Cloudflare rules...
+Adding new Cloudflare IP rules...
+Allowing 173.245.48.0/20 on port 80
+Allowing 173.245.48.0/20 on port 443
+...
+Done! Cloudflare IPs have been updated.
+```
+
+#### Verify UFW Rules
+
+View all Cloudflare rules:
+
+`sudo ufw status numbered | grep Cloudflare` {{ execute }}
+
+Check specific ports:
+
+`sudo ufw status | grep -E '80|443'` {{ execute }}
+
+#### Test the Configuration
+
+**From Cloudflare (should work):**
+
+Enable Cloudflare proxy (orange cloud) on your DNS record, then:
+
+`curl -I https://yourdomain.com` {{ copy }}
+
+**Expected:** Success (200 OK)
+
+**Direct IP access (should be blocked):**
+
+`curl -I http://YOUR_SERVER_IP` {{ copy }}
+
+**Expected:** Connection timeout or refused
+
+`If you get blocked, check your firewall rules!` {{ warning }}
+
+#### Automate Updates with Cron
+
+Cloudflare IPs can change, so update them periodically:
+
+Add to crontab:
+
+`crontab -e` {{ execute }}
+
+Add this line to run weekly on Sundays at 2 AM:
+
+```
+0 2 * * 0 /root/update-cloudflare-ips.sh >> /var/log/cloudflare-ip-update.log 2>&1
+```
+
+**Or run monthly:**
+
+```
+0 2 1 * * /root/update-cloudflare-ips.sh >> /var/log/cloudflare-ip-update.log 2>&1
+```
+
+Save and exit.
+
+View cron jobs:
+
+`crontab -l` {{ execute }}
+
+`Set a calendar reminder to check logs quarterly` {{ tip }}
+
+### Step 4: Option 2 - Configure Hetzner Cloud Firewall
+
+#### Access Hetzner Cloud Console
+
+1. Log into [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Go to **Firewalls** section (left sidebar)
+4. Click **Create Firewall**
+
+#### Create Firewall
+
+**Firewall Name:** `cloudflare-only`
+
+**Rules Configuration:**
+
+#### Inbound Rules
+
+Click **Add rule** for each of these:
+
+**SSH Access (Keep this first!):**
+- **IPs:** `0.0.0.0/0` (or your specific IP for more security)
+- **Protocol:** TCP
+- **Port:** 22
+- **Description:** SSH Access
+
+`NEVER block SSH or you'll lose access to your server!` {{ danger }}
+
+**HTTP from Cloudflare:**
+- **IPs:** (Add each Cloudflare IPv4 range from the list above)
+  - `173.245.48.0/20`
+  - `103.21.244.0/22`
+  - `103.22.200.0/22`
+  - (continue for all ranges...)
+- **Protocol:** TCP
+- **Port:** 80
+- **Description:** Cloudflare HTTP
+
+**HTTPS from Cloudflare:**
+- **IPs:** (Same Cloudflare IPv4 ranges)
+- **Protocol:** TCP
+- **Port:** 443
+- **Description:** Cloudflare HTTPS
+
+**NPM Admin (Optional - restrict to your IP):**
+- **IPs:** `YOUR_IP_ADDRESS/32`
+- **Protocol:** TCP
+- **Port:** 81
+- **Description:** NPM Admin Panel
+
+#### Outbound Rules
+
+**Allow All Outbound (Default):**
+- **IPs:** `0.0.0.0/0`
+- **Protocol:** Any
+- **Port:** Any
+
+`Outbound traffic is usually unrestricted` {{ info }}
+
+#### Apply Firewall to Server
+
+1. After creating rules, click **Apply to resources**
+2. Select your server
+3. Click **Apply**
+
+#### Verify Hetzner Firewall
+
+Check firewall status in Hetzner Console:
+- Should show "Active" on your server
+- Rules should be listed
+
+**Test from outside Cloudflare:**
+
+`curl -I http://YOUR_SERVER_IP` {{ copy }}
+
+**Expected:** Timeout (blocked by firewall)
+
+**Test through Cloudflare:**
+
+`curl -I https://yourdomain.com` {{ copy }}
+
+**Expected:** Success
+
+### Step 5: Enable Cloudflare Proxy (Orange Cloud)
+
+Now that firewall is configured, enable Cloudflare proxy:
+
+1. Log into Cloudflare dashboard
+2. Go to **DNS** → **Records**
+3. Find your A records (code, npm, etc.)
+4. Click the **gray cloud** icon to toggle to **orange cloud**
+5. Repeat for all records you want to protect
+
+**Orange cloud enabled means:**
+- Traffic routes through Cloudflare
+- DDoS protection active
+- WAF filtering enabled
+- Your origin IP is hidden
+
+`With IP allowlisting, even if someone finds your IP, they can't access your server` {{ tip }}
+
+### Step 6: Configure NPM for Cloudflare
+
+#### Get Real Visitor IP
+
+When using Cloudflare proxy, NPM sees Cloudflare's IPs instead of real visitor IPs.
+
+**Fix this by enabling Cloudflare Real IP in NPM:**
+
+Create custom NPM configuration:
+
+```{{ execute }}
+docker exec -it nginx-proxy-manager /bin/bash
+```
+
+Inside container, create custom config:
+
+```{{ copy }}
+cat > /data/nginx/custom/cloudflare.conf << 'EOF'
+# Cloudflare Real IP Configuration
+# This restores the real visitor IP from Cloudflare headers
+
+# Cloudflare IPv4 addresses
+set_real_ip_from 173.245.48.0/20;
+set_real_ip_from 103.21.244.0/22;
+set_real_ip_from 103.22.200.0/22;
+set_real_ip_from 103.31.4.0/22;
+set_real_ip_from 141.101.64.0/18;
+set_real_ip_from 108.162.192.0/18;
+set_real_ip_from 190.93.240.0/20;
+set_real_ip_from 188.114.96.0/20;
+set_real_ip_from 197.234.240.0/22;
+set_real_ip_from 198.41.128.0/17;
+set_real_ip_from 162.158.0.0/15;
+set_real_ip_from 104.16.0.0/13;
+set_real_ip_from 104.24.0.0/14;
+set_real_ip_from 172.64.0.0/13;
+set_real_ip_from 131.0.72.0/22;
+
+# Use the CF-Connecting-IP header
+real_ip_header CF-Connecting-IP;
+EOF
+```
+
+Exit container:
+
+```{{ copy }}
+exit
+```
+
+Restart NPM to apply:
+
+`cd ~/docker/nginx-proxy-manager && docker compose restart` {{ execute }}
+
+`This ensures logs and access controls see the real visitor IP, not Cloudflare's IP` {{ info }}
+
+### Step 7: Verify Complete Setup
+
+#### Check Firewall Protection
+
+**Test direct IP access (should fail):**
+
+`curl -m 5 http://YOUR_SERVER_IP` {{ copy }}
+
+**Expected:** Timeout or connection refused
+
+**Test via Cloudflare (should work):**
+
+`curl -I https://yourdomain.com` {{ copy }}
+
+**Expected:** HTTP 200 OK
+
+#### Check Real IP is Logged
+
+View NPM logs:
+
+`docker logs nginx-proxy-manager | tail -20` {{ execute }}
+
+**Look for:** Real visitor IPs in access logs, not Cloudflare IPs
+
+#### Check Cloudflare Dashboard
+
+1. Go to Cloudflare dashboard
+2. **Analytics** tab
+3. Verify traffic is being recorded
+4. Check **Security** → **Events** for blocked threats
+
+### Benefits of This Setup
+
+**Security:**
+- ✅ DDoS attacks absorbed by Cloudflare
+- ✅ Origin IP hidden from attackers
+- ✅ WAF blocks SQL injection, XSS, etc.
+- ✅ Direct IP access completely blocked
+- ✅ Rate limiting protects against brute force
+
+**Performance:**
+- ✅ Static assets cached globally
+- ✅ Faster page loads worldwide
+- ✅ Reduced bandwidth costs
+- ✅ HTTP/2 and HTTP/3 support
+
+**Reliability:**
+- ✅ Cloudflare's 100% uptime SLA
+- ✅ Automatic failover
+- ✅ Always online mode (caches during outages)
+
+`This is the same infrastructure used by millions of websites including Fortune 500 companies` {{ tip }}
+
+### Maintenance and Updates
+
+#### Update Cloudflare IPs (UFW Method)
+
+Run update script:
+
+`sudo ~/update-cloudflare-ips.sh` {{ execute }}
+
+Check cron logs:
+
+`tail -f /var/log/cloudflare-ip-update.log` {{ execute }}
+
+#### Update Cloudflare IPs (Hetzner Firewall)
+
+1. Check [https://www.cloudflare.com/ips/](https://www.cloudflare.com/ips/) for updates
+2. Compare with your firewall rules in Hetzner Console
+3. Add any new IP ranges
+4. Remove any deprecated ranges
+
+`Set a quarterly reminder to check for IP updates` {{ info }}
+
+#### Update NPM Real IP Configuration
+
+If Cloudflare adds new IPs:
+
+1. Edit `/data/nginx/custom/cloudflare.conf` in NPM container
+2. Add new `set_real_ip_from` lines
+3. Restart NPM
+
+### Troubleshooting
+
+#### Can't Access Site After Enabling Orange Cloud
+
+**Cause:** Firewall blocking Cloudflare IPs or SSL/TLS mode wrong
+
+**Solution:**
+
+Check SSL/TLS mode in Cloudflare:
+1. Cloudflare dashboard → **SSL/TLS**
+2. Set to **Full** (not Full Strict)
+3. Wait 1-2 minutes
+4. Test again
+
+#### Logs Show Cloudflare IPs Instead of Real IPs
+
+**Cause:** Real IP configuration not applied
+
+**Solution:**
+
+Verify NPM custom config exists:
+
+`docker exec nginx-proxy-manager cat /data/nginx/custom/cloudflare.conf` {{ execute }}
+
+If missing, recreate as shown in Step 6.
+
+#### Direct IP Access Still Works
+
+**Cause:** Firewall not properly configured or not applied
+
+**UFW Check:**
+
+`sudo ufw status | grep -E '80|443'` {{ execute }}
+
+Should only show Cloudflare IPs.
+
+**Hetzner Check:**
+
+Verify firewall is applied to server in Hetzner Console.
+
+#### Blocked by Cloudflare
+
+**Cause:** Legitimate traffic flagged by WAF
+
+**Solution:**
+
+1. Cloudflare dashboard → **Security** → **Events**
+2. Find the blocked request
+3. Click **Allow** or adjust WAF rules
+4. Consider creating firewall rule to bypass for your IP
+
+---
+
+## Part 18: Configure Basic Authentication (Access Lists)
+
+### Understanding NPM Access Lists
+
+NPM Access Lists provide an additional layer of security by requiring username/password authentication before accessing your services.
+
+`This adds HTTP Basic Authentication on top of your application's own authentication` {{ info }}
+
+### Step 1: Create Access List
+
+1. Log into NPM admin panel (`http://YOUR_SERVER_IP:81`)
+2. Click **Access Lists** in the top menu
+3. Click **Add Access List**
+
+### Step 2: Configure Access List Details
+
+**Details Tab:**
+
+1. **Name**: Give it a descriptive name (e.g., "Code Server Auth")
+2. **Satisfy Any**: Leave unchecked (requires all conditions to be met)
+3. **Pass Auth to Host**: Check this box ✓
+
+`Pass Auth to Host allows the application behind NPM to see authentication headers` {{ tip }}
+
+### Step 3: Add Authorization
+
+1. Click **Authorization** tab
+2. Click **Add Item** under "Users"
+3. Enter credentials:
+   - **Username**: Your chosen username
+   - **Password**: Strong password (different from your NPM admin password)
+4. Click the **Add** button
+
+**You can add multiple users:**
+- Click **Add Item** again for each user
+- Each user gets their own username/password
+
+`Store these credentials in your password manager!` {{ warning }}
+
+### Step 4: Save Access List
+
+1. Review your settings
+2. Click **Save**
+3. The access list is now created but not yet applied
+
+`Access lists don't do anything until you apply them to a Proxy Host` {{ info }}
+
+### Step 5: Apply Access List to Proxy Host
+
+When creating or editing a Proxy Host:
+
+1. Go to **Hosts** → **Proxy Hosts**
+2. Click **Edit** on an existing proxy host or create a new one
+3. In the **Details** tab, find **Access List** dropdown
+4. Select your created access list (e.g., "Code Server Auth")
+5. Click **Save**
+
+### Step 6: Test Basic Authentication
+
+1. Navigate to your proxied service URL (e.g., `https://code.yourdomain.com`)
+2. Browser should prompt for username/password
+3. Enter credentials you created in the Access List
+4. Click **Sign In** or **OK**
+5. You should then see your application's login (if it has one)
+
+**Two layers of authentication:**
+- First: NPM Basic Auth (username/password)
+- Second: Application's own auth (code-server password)
+
+`This provides defense in depth - attackers must bypass two authentication layers` {{ tip }}
+
+### Managing Access Lists
+
+**Edit Access List:**
+1. Go to **Access Lists**
+2. Click on the access list name
+3. Make changes
+4. Click **Save**
+
+**Add More Users:**
+1. Edit the access list
+2. Authorization tab
+3. Click **Add Item**
+4. Enter new username/password
+
+**Remove Users:**
+1. Edit the access list
+2. Click the **trash icon** next to the user
+3. Click **Save**
+
+**Delete Access List:**
+1. Access Lists page
+2. Click **three dots** menu next to access list
+3. Click **Delete**
+4. Confirm deletion
+
+`Deleting an access list removes authentication from all proxy hosts using it` {{ warning }}
+
+### Best Practices
+
+**Strong Passwords:**
+- Use unique passwords for each access list
+- Minimum 16 characters
+- Store in password manager
+
+**Limit Users:**
+- Only create accounts for people who need access
+- Remove unused accounts promptly
+
+**Separate Access Lists:**
+- Create different access lists for different services
+- Allows granular access control
+- Example: "Dev Team" vs "Admin Only"
+
+**Monitor Access:**
+- Check NPM logs for failed authentication attempts
+- Review access lists periodically
+
+`Access Lists are different from NPM admin accounts - they protect your services, not NPM itself` {{ info }}
+
+---
+
+## Part 19: NPM Maintenance
 
 ### Update NPM to Latest Version
 
@@ -750,7 +1438,7 @@ Real-time stats:
 
 ---
 
-## Part 18: Prepare for Next Steps
+## Part 20: Prepare for Next Steps
 
 ### Verify NPM is Ready
 
