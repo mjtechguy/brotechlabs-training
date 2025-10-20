@@ -1,0 +1,1206 @@
+# Part 10: Troubleshooting and Recovery
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Linux system architecture and boot process
+- How to work with systemd and services
+- Basic networking concepts
+- File system structure and permissions
+- How to read and analyze log files
+
+**Learning Resources:**
+- [Linux Troubleshooting Guide](https://www.tecmint.com/linux-troubleshooting-guide/)
+- [Ubuntu Recovery Documentation](https://help.ubuntu.com/community/RecoveryMode)
+- [System Recovery Techniques](https://www.kernel.org/doc/html/latest/admin-guide/sysrq.html)
+- [Debugging Linux Systems](https://www.brendangregg.com/linuxperf.html)
+
+---
+
+## Chapter 22: Troubleshooting Methodology
+
+### Systematic Troubleshooting Approach
+
+Effective troubleshooting follows a systematic approach to identify and resolve issues efficiently.
+
+#### The Troubleshooting Process
+
+1. **Define the Problem**: What exactly is not working?
+2. **Gather Information**: Collect logs, error messages, system state
+3. **Develop Hypotheses**: What could cause this problem?
+4. **Test Hypotheses**: Systematically test each possibility
+5. **Implement Solution**: Apply the fix
+6. **Verify Resolution**: Confirm the problem is solved
+7. **Document**: Record the issue and solution for future reference
+
+#### Initial System Assessment
+
+`sudo nano /usr/local/bin/system-diagnose.sh` {{ copy }}
+
+```bash{{ execute }}
+#!/bin/bash
+# Comprehensive system diagnosis script
+
+LOG_FILE="/tmp/system-diagnosis-$(date +%Y%m%d-%H%M%S).log"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo "System Diagnosis Report" | tee "$LOG_FILE"
+echo "========================" | tee -a "$LOG_FILE"
+echo "Date: $(date)" | tee -a "$LOG_FILE"
+echo "Hostname: $(hostname -f)" | tee -a "$LOG_FILE"
+echo "" | tee -a "$LOG_FILE"
+
+# System Information
+check_system_info() {
+    echo -e "${BLUE}=== System Information ===${NC}" | tee -a "$LOG_FILE"
+
+    # OS Version
+    echo "OS Version:" | tee -a "$LOG_FILE"
+    lsb_release -a 2>/dev/null | tee -a "$LOG_FILE"
+
+    # Kernel
+    echo -e "\nKernel:" | tee -a "$LOG_FILE"
+    uname -r | tee -a "$LOG_FILE"
+
+    # Uptime
+    echo -e "\nUptime:" | tee -a "$LOG_FILE"
+    uptime | tee -a "$LOG_FILE"
+
+    # Last reboot
+    echo -e "\nLast reboot:" | tee -a "$LOG_FILE"
+    who -b | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Resource Usage
+check_resources() {
+    echo -e "${BLUE}=== Resource Usage ===${NC}" | tee -a "$LOG_FILE"
+
+    # CPU
+    echo "CPU Usage:" | tee -a "$LOG_FILE"
+    top -bn1 | head -5 | tee -a "$LOG_FILE"
+
+    # Memory
+    echo -e "\nMemory Usage:" | tee -a "$LOG_FILE"
+    free -h | tee -a "$LOG_FILE"
+
+    # Swap
+    echo -e "\nSwap Usage:" | tee -a "$LOG_FILE"
+    swapon --show | tee -a "$LOG_FILE"
+
+    # Disk
+    echo -e "\nDisk Usage:" | tee -a "$LOG_FILE"
+    df -h | tee -a "$LOG_FILE"
+
+    # Disk I/O
+    echo -e "\nDisk I/O Statistics:" | tee -a "$LOG_FILE"
+    iostat -x 1 3 | tail -n 20 | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Network Status
+check_network() {
+    echo -e "${BLUE}=== Network Status ===${NC}" | tee -a "$LOG_FILE"
+
+    # Interfaces
+    echo "Network Interfaces:" | tee -a "$LOG_FILE"
+    ip addr show | tee -a "$LOG_FILE"
+
+    # Routes
+    echo -e "\nRouting Table:" | tee -a "$LOG_FILE"
+    ip route show | tee -a "$LOG_FILE"
+
+    # DNS
+    echo -e "\nDNS Servers:" | tee -a "$LOG_FILE"
+    systemd-resolve --status | grep "DNS Servers" | tee -a "$LOG_FILE"
+
+    # Connections
+    echo -e "\nActive Connections:" | tee -a "$LOG_FILE"
+    ss -tuln | head -20 | tee -a "$LOG_FILE"
+
+    # Firewall
+    echo -e "\nFirewall Status:" | tee -a "$LOG_FILE"
+    sudo ufw status verbose | head -20 | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Service Status
+check_services() {
+    echo -e "${BLUE}=== Service Status ===${NC}" | tee -a "$LOG_FILE"
+
+    # Failed services
+    echo "Failed Services:" | tee -a "$LOG_FILE"
+    systemctl list-units --failed | tee -a "$LOG_FILE"
+
+    # Critical services
+    echo -e "\nCritical Services Status:" | tee -a "$LOG_FILE"
+    for service in ssh nginx mysql postgresql redis-server; do
+        if systemctl is-enabled "$service" &>/dev/null; then
+            status=$(systemctl is-active "$service")
+            if [ "$status" = "active" ]; then
+                echo -e "${GREEN}✓${NC} $service: $status" | tee -a "$LOG_FILE"
+            else
+                echo -e "${RED}✗${NC} $service: $status" | tee -a "$LOG_FILE"
+            fi
+        fi
+    done
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Recent Logs
+check_logs() {
+    echo -e "${BLUE}=== Recent System Logs ===${NC}" | tee -a "$LOG_FILE"
+
+    # System errors
+    echo "Recent Errors (last 20):" | tee -a "$LOG_FILE"
+    journalctl -p err -n 20 --no-pager | tee -a "$LOG_FILE"
+
+    # Kernel messages
+    echo -e "\nRecent Kernel Messages:" | tee -a "$LOG_FILE"
+    dmesg | tail -20 | tee -a "$LOG_FILE"
+
+    # Authentication
+    echo -e "\nRecent Authentication:" | tee -a "$LOG_FILE"
+    grep -i "authentication\|failed\|error" /var/log/auth.log | tail -10 | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Process Information
+check_processes() {
+    echo -e "${BLUE}=== Process Information ===${NC}" | tee -a "$LOG_FILE"
+
+    # Top CPU consumers
+    echo "Top CPU Processes:" | tee -a "$LOG_FILE"
+    ps aux --sort=-%cpu | head -10 | tee -a "$LOG_FILE"
+
+    # Top Memory consumers
+    echo -e "\nTop Memory Processes:" | tee -a "$LOG_FILE"
+    ps aux --sort=-%mem | head -10 | tee -a "$LOG_FILE"
+
+    # Zombie processes
+    echo -e "\nZombie Processes:" | tee -a "$LOG_FILE"
+    ps aux | grep " Z " | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Performance Issues
+check_performance() {
+    echo -e "${BLUE}=== Performance Indicators ===${NC}" | tee -a "$LOG_FILE"
+
+    # Load average
+    echo "Load Average:" | tee -a "$LOG_FILE"
+    cat /proc/loadavg | tee -a "$LOG_FILE"
+
+    # CPU cores
+    echo -e "\nCPU Cores: $(nproc)" | tee -a "$LOG_FILE"
+
+    # I/O wait
+    echo -e "\nI/O Wait:" | tee -a "$LOG_FILE"
+    iostat -c 1 3 | grep -A1 avg-cpu | tail -2 | tee -a "$LOG_FILE"
+
+    # Memory pressure
+    echo -e "\nMemory Pressure:" | tee -a "$LOG_FILE"
+    if [ -f /proc/pressure/memory ]; then
+        cat /proc/pressure/memory | tee -a "$LOG_FILE"
+    fi
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Security Check
+check_security() {
+    echo -e "${BLUE}=== Security Quick Check ===${NC}" | tee -a "$LOG_FILE"
+
+    # Login attempts
+    echo "Recent Failed Logins:" | tee -a "$LOG_FILE"
+    grep "Failed password" /var/log/auth.log | tail -5 | tee -a "$LOG_FILE"
+
+    # Sudo usage
+    echo -e "\nRecent Sudo Usage:" | tee -a "$LOG_FILE"
+    grep "sudo" /var/log/auth.log | tail -5 | tee -a "$LOG_FILE"
+
+    # Open ports
+    echo -e "\nListening Ports:" | tee -a "$LOG_FILE"
+    sudo ss -tlnp | tee -a "$LOG_FILE"
+    echo "" | tee -a "$LOG_FILE"
+}
+
+# Main execution
+main() {
+    check_system_info
+    check_resources
+    check_network
+    check_services
+    check_logs
+    check_processes
+    check_performance
+    check_security
+
+    echo -e "${GREEN}Diagnosis complete. Report saved to: $LOG_FILE${NC}"
+}
+
+main
+```
+
+`sudo chmod +x /usr/local/bin/system-diagnose.sh` {{ execute }}
+
+`sudo system-diagnose.sh` {{ execute }}
+
+### Common Issues and Solutions
+
+#### System Won't Boot
+
+```bash{{ copy }}
+# Boot troubleshooting checklist
+
+# 1. Check GRUB menu (hold Shift during boot)
+# 2. Boot to recovery mode
+# 3. From recovery menu, select:
+#    - fsck (Check filesystem)
+#    - remount (Remount filesystem read/write)
+#    - root (Drop to root shell)
+
+# In recovery root shell:
+
+# Check filesystem
+fsck -y /dev/sda1
+
+# Check and fix package issues
+dpkg --configure -a
+apt-get update
+apt-get -f install
+
+# Check kernel issues
+# List installed kernels
+dpkg --list | grep linux-image
+
+# Remove problematic kernel
+apt-get remove linux-image-[version]
+
+# Reinstall current kernel
+apt-get install --reinstall linux-image-$(uname -r)
+
+# Update GRUB
+update-grub
+
+# Check disk space
+df -h
+
+# Clean up if needed
+apt-get autoremove
+apt-get clean
+journalctl --vacuum-size=100M
+```
+
+#### Service Won't Start
+
+`sudo nano /usr/local/bin/debug-service.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Service debugging script
+
+SERVICE=$1
+
+if [ -z "$SERVICE" ]; then
+    echo "Usage: $0 <service-name>"
+    exit 1
+fi
+
+echo "=== Debugging $SERVICE ==="
+
+# Check if service exists
+if ! systemctl list-unit-files | grep -q "^$SERVICE"; then
+    echo "Service $SERVICE does not exist"
+    exit 1
+fi
+
+# Service status
+echo "1. Service Status:"
+systemctl status "$SERVICE" --no-pager
+
+# Service dependencies
+echo -e "\n2. Dependencies:"
+systemctl list-dependencies "$SERVICE"
+
+# Configuration test (if applicable)
+echo -e "\n3. Configuration Test:"
+case "$SERVICE" in
+    nginx*)
+        nginx -t
+        ;;
+    apache2*)
+        apache2ctl configtest
+        ;;
+    mysql*)
+        mysqld --verbose --help 2>/dev/null | head -20
+        ;;
+    ssh*)
+        sshd -t
+        ;;
+esac
+
+# Recent logs
+echo -e "\n4. Recent Logs:"
+journalctl -u "$SERVICE" -n 50 --no-pager
+
+# Process check
+echo -e "\n5. Process Check:"
+ps aux | grep -i "$SERVICE" | grep -v grep
+
+# Port check
+echo -e "\n6. Port Check:"
+case "$SERVICE" in
+    nginx*)
+        ss -tlnp | grep :80
+        ss -tlnp | grep :443
+        ;;
+    ssh*)
+        ss -tlnp | grep :22
+        ;;
+    mysql*)
+        ss -tlnp | grep :3306
+        ;;
+    postgresql*)
+        ss -tlnp | grep :5432
+        ;;
+esac
+
+# File permissions
+echo -e "\n7. Configuration File Permissions:"
+case "$SERVICE" in
+    nginx*)
+        ls -la /etc/nginx/nginx.conf
+        ls -la /etc/nginx/sites-enabled/
+        ;;
+    apache2*)
+        ls -la /etc/apache2/apache2.conf
+        ls -la /etc/apache2/sites-enabled/
+        ;;
+    ssh*)
+        ls -la /etc/ssh/sshd_config
+        ;;
+esac
+
+# Resource limits
+echo -e "\n8. Resource Limits:"
+systemctl show "$SERVICE" | grep -E "Limit|Memory|CPU|Tasks"
+
+# Try to start with verbose output
+echo -e "\n9. Attempting to start service:"
+systemctl start "$SERVICE" -l
+
+# Final status
+echo -e "\n10. Final Status:"
+systemctl status "$SERVICE" --no-pager
+```
+
+#### High CPU Usage
+
+`sudo nano /usr/local/bin/debug-cpu.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Debug high CPU usage
+
+echo "=== CPU Usage Analysis ==="
+
+# Overall CPU usage
+echo "1. Current CPU Usage:"
+top -bn1 | head -10
+
+# Top CPU processes over time
+echo -e "\n2. Top CPU Consumers (30 seconds):"
+for i in {1..6}; do
+    echo "Sample $i:"
+    ps aux --sort=-%cpu | head -5 | awk '{print $2, $3, $11}'
+    sleep 5
+done
+
+# Check for CPU-intensive services
+echo -e "\n3. Service CPU Usage:"
+systemd-cgtop -n 1 -b --cpu=percentage
+
+# Check CPU frequency scaling
+echo -e "\n4. CPU Frequency:"
+grep "cpu MHz" /proc/cpuinfo
+
+# Check for thermal throttling
+echo -e "\n5. CPU Temperature:"
+if command -v sensors &> /dev/null; then
+    sensors | grep -E "Core|CPU"
+fi
+
+# Check scheduler statistics
+echo -e "\n6. Scheduler Statistics:"
+cat /proc/schedstat | head -20
+
+# Interrupt statistics
+echo -e "\n7. Interrupts:"
+cat /proc/interrupts | head -20
+
+# Process tree of high CPU process
+echo -e "\n8. Process Tree of Top Consumer:"
+TOP_PID=$(ps aux --sort=-%cpu | head -2 | tail -1 | awk '{print $2}')
+pstree -p "$TOP_PID"
+
+# Trace system calls (5 seconds)
+echo -e "\n9. System Calls of Top Consumer (5 seconds):"
+timeout 5 strace -c -p "$TOP_PID" 2>&1
+```
+
+### Log Analysis Techniques
+
+#### Advanced Log Analysis
+
+`sudo nano /usr/local/bin/log-analyze.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Advanced log analysis script
+
+analyze_auth_logs() {
+    echo "=== Authentication Analysis ==="
+
+    # Failed login attempts by IP
+    echo "Failed Login Attempts by IP:"
+    grep "Failed password" /var/log/auth.log | \
+        awk '{print $(NF-3)}' | sort | uniq -c | sort -rn | head -10
+
+    # Successful logins
+    echo -e "\nSuccessful Logins:"
+    grep "Accepted password\|Accepted publickey" /var/log/auth.log | \
+        awk '{print $1, $2, $3, $11}' | tail -10
+
+    # Sudo usage
+    echo -e "\nSudo Commands:"
+    grep "sudo.*COMMAND" /var/log/auth.log | tail -10
+
+    # Account changes
+    echo -e "\nAccount Modifications:"
+    grep -E "useradd|usermod|userdel|passwd" /var/log/auth.log | tail -5
+}
+
+analyze_system_logs() {
+    echo -e "\n=== System Log Analysis ==="
+
+    # Error frequency
+    echo "Error Frequency (last 24 hours):"
+    journalctl --since="24 hours ago" -p err --no-pager | \
+        awk '{print $5}' | sort | uniq -c | sort -rn | head -10
+
+    # Out of memory events
+    echo -e "\nOOM (Out of Memory) Events:"
+    grep -i "out of memory\|oom-killer" /var/log/syslog | tail -5
+
+    # Disk errors
+    echo -e "\nDisk Errors:"
+    grep -iE "I/O error|disk error|read error|write error" /var/log/syslog | tail -5
+
+    # Network errors
+    echo -e "\nNetwork Errors:"
+    grep -iE "link down|link is not ready|connection refused" /var/log/syslog | tail -5
+}
+
+analyze_application_logs() {
+    echo -e "\n=== Application Log Analysis ==="
+
+    # Nginx errors
+    if [ -f /var/log/nginx/error.log ]; then
+        echo "Nginx Errors:"
+        awk '{print $6, $7, $8, $9, $10}' /var/log/nginx/error.log | \
+            sort | uniq -c | sort -rn | head -10
+    fi
+
+    # MySQL slow queries
+    if [ -f /var/log/mysql/slow.log ]; then
+        echo -e "\nMySQL Slow Queries:"
+        grep "Query_time" /var/log/mysql/slow.log | tail -5
+    fi
+
+    # PHP errors
+    if [ -f /var/log/php/error.log ]; then
+        echo -e "\nPHP Errors:"
+        grep -E "Fatal error|Warning|Notice" /var/log/php/error.log | \
+            awk '{print $3, $4, $5}' | sort | uniq -c | sort -rn | head -10
+    fi
+}
+
+analyze_performance_logs() {
+    echo -e "\n=== Performance Analysis ==="
+
+    # High load periods
+    echo "High Load Periods:"
+    sar -q | awk '$4 > 2 {print $1, $2, "Load:", $4}' | tail -10
+
+    # Memory usage peaks
+    echo -e "\nMemory Usage Peaks:"
+    sar -r | awk '$4 > 80 {print $1, $2, "Used:", $4"%"}' | tail -10
+
+    # Disk I/O peaks
+    echo -e "\nDisk I/O Peaks:"
+    sar -d | awk '$10 > 80 {print $1, $2, $3, "Util:", $10"%"}' | tail -10
+}
+
+# Pattern search function
+search_pattern() {
+    local pattern=$1
+    local logfile=$2
+    local context=${3:-2}
+
+    echo -e "\nSearching for pattern: $pattern in $logfile"
+    grep -C "$context" "$pattern" "$logfile" | tail -20
+}
+
+# Time-based analysis
+analyze_by_time() {
+    local hour=$1
+    echo -e "\nLog entries for hour $hour:00:"
+    journalctl --since="$(date +%Y-%m-%d) $hour:00" --until="$(date +%Y-%m-%d) $hour:59" | \
+        head -50
+}
+
+# Main menu
+case "$1" in
+    auth)
+        analyze_auth_logs
+        ;;
+    system)
+        analyze_system_logs
+        ;;
+    app)
+        analyze_application_logs
+        ;;
+    perf)
+        analyze_performance_logs
+        ;;
+    search)
+        search_pattern "$2" "$3" "$4"
+        ;;
+    time)
+        analyze_by_time "$2"
+        ;;
+    all)
+        analyze_auth_logs
+        analyze_system_logs
+        analyze_application_logs
+        analyze_performance_logs
+        ;;
+    *)
+        echo "Usage: $0 {auth|system|app|perf|search <pattern> <file>|time <hour>|all}"
+        exit 1
+        ;;
+esac
+```
+
+### Network Debugging
+
+#### Network Troubleshooting Tools
+
+`sudo nano /usr/local/bin/debug-network.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Comprehensive network debugging
+
+TARGET=${1:-"8.8.8.8"}
+
+echo "=== Network Debugging ==="
+echo "Target: $TARGET"
+echo
+
+# Basic connectivity
+echo "1. Basic Connectivity Test:"
+ping -c 4 "$TARGET"
+
+# DNS resolution
+echo -e "\n2. DNS Resolution:"
+nslookup "$TARGET"
+dig "$TARGET" +short
+
+# Traceroute
+echo -e "\n3. Network Path:"
+traceroute -m 15 "$TARGET"
+
+# MTU discovery
+echo -e "\n4. MTU Discovery:"
+ping -M do -s 1472 -c 4 "$TARGET"
+
+# Port connectivity (if hostname)
+if [[ "$TARGET" =~ ^[a-zA-Z] ]]; then
+    echo -e "\n5. Port Scan (common ports):"
+    for port in 22 80 443 3306 5432; do
+        timeout 1 bash -c "echo >/dev/tcp/$TARGET/$port" 2>/dev/null && \
+            echo "Port $port: OPEN" || echo "Port $port: CLOSED"
+    done
+fi
+
+# Local network configuration
+echo -e "\n6. Local Network Configuration:"
+ip addr show
+ip route show
+cat /etc/resolv.conf
+
+# Network statistics
+echo -e "\n7. Network Statistics:"
+ss -s
+netstat -i
+
+# Firewall rules
+echo -e "\n8. Firewall Rules:"
+sudo iptables -L -n -v | head -30
+sudo ufw status numbered
+
+# Network performance
+echo -e "\n9. Network Performance Test:"
+if command -v iperf3 &> /dev/null; then
+    echo "Run 'iperf3 -s' on target and 'iperf3 -c $TARGET' here"
+fi
+
+# TCP dump (5 seconds)
+echo -e "\n10. Packet Capture (5 seconds):"
+sudo timeout 5 tcpdump -i any host "$TARGET" -c 20
+```
+
+### Performance Troubleshooting
+
+#### Performance Analysis Script
+
+`sudo nano /usr/local/bin/debug-performance.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Performance bottleneck identification
+
+echo "=== Performance Analysis ==="
+echo "Collecting data for 30 seconds..."
+
+# Create temporary directory for results
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
+
+# Background monitoring processes
+vmstat 1 30 > "$TMPDIR/vmstat.log" &
+iostat -x 1 30 > "$TMPDIR/iostat.log" &
+mpstat -P ALL 1 30 > "$TMPDIR/mpstat.log" &
+
+# Collect initial state
+echo "Initial State:" > "$TMPDIR/initial.log"
+ps aux --sort=-%cpu | head -20 >> "$TMPDIR/initial.log"
+ps aux --sort=-%mem | head -20 >> "$TMPDIR/initial.log"
+
+# Wait for collection
+sleep 31
+
+# Analyze results
+echo -e "\n=== Analysis Results ==="
+
+# CPU bottleneck
+echo "1. CPU Analysis:"
+awk '/^Average:/ {if (NR>1) print}' "$TMPDIR/mpstat.log"
+
+CPU_IDLE=$(awk '/^Average:/ && /all/ {print $NF}' "$TMPDIR/mpstat.log")
+if (( $(echo "$CPU_IDLE < 20" | bc -l) )); then
+    echo "WARNING: CPU bottleneck detected (idle < 20%)"
+fi
+
+# Memory bottleneck
+echo -e "\n2. Memory Analysis:"
+tail -5 "$TMPDIR/vmstat.log" | awk '{print "Free:", $4, "Buffer:", $5, "Cache:", $6, "Swap In:", $7, "Swap Out:", $8}'
+
+SWAP_ACTIVITY=$(tail -10 "$TMPDIR/vmstat.log" | awk '{sum+=$7+$8} END {print sum}')
+if [ "$SWAP_ACTIVITY" -gt 100 ]; then
+    echo "WARNING: High swap activity detected"
+fi
+
+# I/O bottleneck
+echo -e "\n3. I/O Analysis:"
+grep "avg-cpu" "$TMPDIR/iostat.log" -A1 | tail -2
+
+IO_WAIT=$(grep "avg-cpu" "$TMPDIR/iostat.log" -A1 | tail -1 | awk '{print $4}')
+if (( $(echo "$IO_WAIT > 30" | bc -l) )); then
+    echo "WARNING: I/O bottleneck detected (iowait > 30%)"
+fi
+
+# Top resource consumers
+echo -e "\n4. Top Resource Consumers:"
+echo "CPU:"
+ps aux --sort=-%cpu | head -5 | awk '{print $2, $3, $11}'
+echo -e "\nMemory:"
+ps aux --sort=-%mem | head -5 | awk '{print $2, $4, $11}'
+
+# System calls analysis
+echo -e "\n5. System Call Analysis (top process):"
+TOP_PID=$(ps aux --sort=-%cpu | head -2 | tail -1 | awk '{print $2}')
+timeout 5 strace -c -p "$TOP_PID" 2>&1 | head -20
+
+echo -e "\nAnalysis complete."
+```
+
+---
+
+## Chapter 23: System Recovery
+
+### Boot Issues Resolution
+
+#### GRUB Recovery
+
+```bash{{ copy }}
+# GRUB recovery procedures
+
+# 1. Access GRUB menu
+# Hold Shift or Esc during boot
+
+# 2. From GRUB menu, press 'e' to edit
+
+# 3. Common fixes in GRUB:
+
+# Fix root partition
+# Change: root=UUID=xxx
+# To: root=/dev/sda1
+
+# Single user mode
+# Add to linux line: single
+# Or: init=/bin/bash
+
+# Disable problematic services
+# Add to linux line: systemd.unit=rescue.target
+
+# 4. Press Ctrl+X or F10 to boot
+
+# After booting to recovery:
+
+# Remount root as read-write
+mount -o remount,rw /
+
+# Fix GRUB installation
+grub-install /dev/sda
+update-grub
+
+# Rebuild initramfs
+update-initramfs -u -k all
+
+# Fix package issues
+dpkg --configure -a
+apt-get update
+apt-get -f install
+```
+
+#### Boot Repair Script
+
+`sudo nano /usr/local/bin/boot-repair.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Automated boot repair script
+
+echo "=== Boot Repair Script ==="
+echo "WARNING: Run only from recovery mode or live USB"
+echo ""
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
+
+# Mount filesystems
+repair_mounts() {
+    echo "1. Checking and mounting filesystems..."
+
+    # Remount root as read-write
+    mount -o remount,rw /
+
+    # Mount necessary filesystems
+    mount -t proc proc /proc
+    mount -t sysfs sys /sys
+    mount -t devtmpfs udev /dev
+    mount -t devpts devpts /dev/pts
+
+    # Mount boot partition if separate
+    if [ -b /dev/sda1 ]; then
+        mount /dev/sda1 /boot
+    fi
+
+    echo "Filesystems mounted"
+}
+
+# Fix filesystem errors
+fix_filesystem() {
+    echo -e "\n2. Checking filesystems..."
+
+    # Get root device
+    ROOT_DEV=$(mount | grep "on / " | awk '{print $1}')
+
+    # Check and fix filesystem
+    fsck -y "$ROOT_DEV"
+
+    # Check other filesystems
+    fsck -A -y
+
+    echo "Filesystem check complete"
+}
+
+# Repair package system
+repair_packages() {
+    echo -e "\n3. Repairing package system..."
+
+    # Fix dpkg database
+    dpkg --configure -a
+
+    # Fix broken dependencies
+    apt-get update
+    apt-get -f install -y
+
+    # Remove problematic packages if needed
+    apt-get autoremove -y
+
+    # Clean package cache
+    apt-get clean
+
+    echo "Package system repaired"
+}
+
+# Repair GRUB
+repair_grub() {
+    echo -e "\n4. Repairing GRUB bootloader..."
+
+    # Detect boot disk
+    BOOT_DISK=$(lsblk -no pkname $(mount | grep "on / " | awk '{print $1}') | head -1)
+
+    if [ -z "$BOOT_DISK" ]; then
+        echo "Could not detect boot disk"
+        return 1
+    fi
+
+    # Install GRUB
+    grub-install /dev/"$BOOT_DISK"
+
+    # Update GRUB configuration
+    update-grub
+
+    echo "GRUB repaired"
+}
+
+# Fix kernel issues
+repair_kernel() {
+    echo -e "\n5. Checking kernel..."
+
+    # Get current kernel
+    CURRENT_KERNEL=$(uname -r)
+
+    # Reinstall current kernel
+    apt-get install --reinstall linux-image-"$CURRENT_KERNEL" -y
+
+    # Update initramfs
+    update-initramfs -u -k all
+
+    echo "Kernel repaired"
+}
+
+# Fix networking
+repair_network() {
+    echo -e "\n6. Resetting network configuration..."
+
+    # Reset network configuration
+    rm -f /etc/netplan/*.yaml
+
+    # Create default configuration
+    cat > /etc/netplan/01-netcfg.yaml << EOF
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+EOF
+
+    # Apply configuration
+    netplan generate
+    netplan apply
+
+    echo "Network configuration reset"
+}
+
+# Main repair process
+main() {
+    repair_mounts
+    fix_filesystem
+    repair_packages
+    repair_grub
+    repair_kernel
+    repair_network
+
+    echo -e "\n=== Repair Complete ==="
+    echo "Please reboot the system: shutdown -r now"
+}
+
+# Confirm before proceeding
+read -p "This will attempt to repair the system. Continue? (y/n): " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    main
+else
+    echo "Repair cancelled"
+fi
+```
+
+### Root Password Recovery
+
+#### Password Recovery Procedures
+
+```bash{{ copy }}
+# Root password recovery script
+# This must be run from recovery mode or live USB
+
+# Method 1: Using recovery mode
+# 1. Boot to GRUB menu
+# 2. Select Advanced options
+# 3. Select recovery mode
+# 4. Select "root - Drop to root shell prompt"
+
+# Method 2: Using init=/bin/bash
+# 1. In GRUB, press 'e' to edit
+# 2. Find line starting with "linux"
+# 3. Replace "ro quiet splash" with "rw init=/bin/bash"
+# 4. Press Ctrl+X to boot
+
+# Once in recovery shell:
+
+# Remount root filesystem as read-write
+mount -o remount,rw /
+
+# Reset root password
+passwd root
+
+# Or reset specific user password
+passwd username
+
+# Update authentication
+touch /etc/shadow
+
+# If using systemd, you may need to:
+# 1. Boot with "systemd.unit=rescue.target" instead
+# 2. Then run:
+mount -o remount,rw /
+passwd root
+
+# Sync and reboot
+sync
+reboot -f
+```
+
+### Data Recovery Techniques
+
+#### Data Recovery Toolkit
+
+`sudo nano /usr/local/bin/data-recovery.sh` {{ copy }}
+
+```bash{{ copy }}
+#!/bin/bash
+# Comprehensive data recovery toolkit
+
+RECOVERY_DIR="/recovery"
+mkdir -p "$RECOVERY_DIR"
+
+# Database recovery
+recover_mysql_database() {
+    local database=$1
+    echo "Recovering MySQL database: $database"
+
+    # Try to repair tables
+    mysqlcheck --repair --all-databases
+
+    # Force InnoDB recovery
+    echo "Forcing InnoDB recovery mode..."
+    echo "[mysqld]" > /tmp/recovery.cnf
+    echo "innodb_force_recovery = 1" >> /tmp/recovery.cnf
+
+    # Start MySQL in recovery mode
+    mysqld --defaults-file=/tmp/recovery.cnf &
+    sleep 10
+
+    # Dump database
+    mysqldump --all-databases > "$RECOVERY_DIR/mysql_recovery.sql"
+
+    # Stop recovery mode MySQL
+    mysqladmin shutdown
+
+    echo "Database dumped to $RECOVERY_DIR/mysql_recovery.sql"
+}
+
+recover_postgresql_database() {
+    echo "Recovering PostgreSQL database"
+
+    # Reset transaction log
+    sudo -u postgres pg_resetwal /var/lib/postgresql/14/main
+
+    # Start in single-user mode
+    sudo -u postgres postgres --single -D /var/lib/postgresql/14/main postgres
+
+    # Dump all databases
+    sudo -u postgres pg_dumpall > "$RECOVERY_DIR/postgresql_recovery.sql"
+
+    echo "Database dumped to $RECOVERY_DIR/postgresql_recovery.sql"
+}
+
+# File recovery
+recover_deleted_files() {
+    local partition=$1
+    echo "Scanning for deleted files on $partition"
+
+    # Install recovery tools if not present
+    which testdisk || apt-get install -y testdisk
+    which extundelete || apt-get install -y extundelete
+
+    # Create recovery directory
+    mkdir -p "$RECOVERY_DIR/files"
+
+    # Use extundelete for ext4
+    if file -sL "$partition" | grep -q ext4; then
+        extundelete "$partition" --restore-all -o "$RECOVERY_DIR/files"
+    fi
+
+    # Use testdisk for general recovery
+    testdisk /log /cmd "$partition" undelete
+
+    echo "Recovered files saved to $RECOVERY_DIR/files"
+}
+
+# Main menu
+echo "=== Data Recovery Toolkit ==="
+echo "1. Recover MySQL Database"
+echo "2. Recover PostgreSQL Database"
+echo "3. Recover Deleted Files"
+echo "4. Recover Logs"
+echo "5. Recover Configurations"
+echo "6. Recover User Data"
+echo "7. Full Recovery (All)"
+echo ""
+read -p "Select option: " option
+
+case $option in
+    1) recover_mysql_database ;;
+    2) recover_postgresql_database ;;
+    3) read -p "Enter partition (e.g., /dev/sda1): " part
+       recover_deleted_files "$part" ;;
+    *) echo "Invalid option" ;;
+esac
+```
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Troubleshooting Practice
+1. Create a script that diagnoses common system issues
+2. Simulate various failures (disk full, service crash, network issue)
+3. Use troubleshooting tools to identify root causes
+4. Document the resolution process
+5. Create automated recovery procedures
+
+### Exercise 2: Recovery Scenarios
+1. Practice booting into recovery mode
+2. Repair a corrupted filesystem
+3. Recover a failed service with dependencies
+4. Restore data from backups
+5. Reset forgotten passwords
+
+### Exercise 3: Emergency Response
+1. Create an emergency response checklist
+2. Set up emergency maintenance procedures
+3. Practice data recovery techniques
+4. Implement automated recovery scripts
+5. Create incident response documentation
+
+### Exercise 4: Post-Incident Process
+1. Simulate a system failure
+2. Collect forensic data
+3. Perform root cause analysis
+4. Generate an incident report
+5. Create prevention measures
+
+---
+
+## Quick Reference
+
+### Troubleshooting Commands
+```bash
+# System diagnosis
+systemctl status           # Service status
+journalctl -xe             # Recent logs
+dmesg | tail              # Kernel messages
+top                       # Process activity
+df -h                     # Disk usage
+free -h                   # Memory usage
+
+# Network troubleshooting
+ip addr show              # Network interfaces
+ss -tulpn                 # Open ports
+ping -c 4 host           # Connectivity test
+traceroute host          # Network path
+nslookup domain          # DNS resolution
+
+# Process debugging
+strace -p PID            # System calls
+lsof -p PID              # Open files
+ps aux | grep process    # Find processes
+```
+
+### Recovery Commands
+```bash
+# Boot recovery
+grub-install /dev/sda     # Reinstall GRUB
+update-grub              # Update GRUB config
+update-initramfs -u      # Update initramfs
+
+# Filesystem recovery
+fsck -y /dev/sda1        # Check filesystem
+mount -o remount,rw /    # Remount read-write
+badblocks -sv /dev/sda   # Check for bad blocks
+
+# Service recovery
+systemctl reset-failed    # Clear failed state
+systemctl daemon-reload   # Reload configs
+dpkg --configure -a      # Fix package issues
+
+# Password recovery
+passwd username          # Reset password
+passwd -l username       # Lock account
+passwd -u username       # Unlock account
+```
+
+---
+
+## Additional Resources
+
+### Documentation
+- [Ubuntu Server Guide - Troubleshooting](https://ubuntu.com/server/docs/troubleshooting)
+- [Linux System Recovery](https://www.tldp.org/LDP/sag/html/system-recovery.html)
+- [SystemD Debugging](https://www.freedesktop.org/software/systemd/man/systemd-analyze.html)
+- [Kernel Debugging](https://www.kernel.org/doc/html/latest/admin-guide/bug-hunting.html)
+
+### Tools
+- [SystemRescue](https://www.system-rescue.org/) - Recovery live system
+- [TestDisk](https://www.cgsecurity.org/wiki/TestDisk) - Data recovery
+- [GParted Live](https://gparted.org/livecd.php) - Partition management
+- [Trinity Rescue Kit](http://trinityhome.org/) - Recovery and repair
+
+### Best Practices
+- [Incident Response Guide](https://www.sans.org/reading-room/whitepapers/incident/)
+- [Linux Performance Analysis](http://www.brendangregg.com/usemethod.html)
+- [Post-Mortem Template](https://github.com/dastergon/postmortem-templates)
+
+### Next Steps
+After completing this section, you should:
+- Have systematic troubleshooting methodology
+- Be able to recover from various system failures
+- Know how to perform root cause analysis
+- Have emergency procedures documented
+- Be prepared for incident response
+
+Continue to Part 11 to learn about production operations and best practices.

@@ -1,0 +1,1036 @@
+# Part 3: Storage and Filesystems
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic Linux commands (ls, cd, mkdir)
+- File permissions basics
+- How to use sudo
+- The concept of mounting (we'll explain in detail)
+
+**Learning Resources:**
+- Linux Filesystem Hierarchy: https://www.pathname.com/fhs/
+- LVM Guide: https://wiki.ubuntu.com/Lvm
+- Filesystem Types: https://help.ubuntu.com/community/LinuxFilesystemsExplained
+- Storage Concepts: https://www.redhat.com/sysadmin/linux-storage-concepts
+
+---
+
+## Chapter 7: Storage Management in VMs
+
+### Understanding Storage in Cloud VMs
+
+When working with cloud VMs, storage is fundamentally different from your personal computer. Let's understand these differences and key concepts.
+
+#### What is Block Storage?
+
+**Block storage** treats storage as raw blocks of data that can be accessed directly. Think of it like this:
+
+- **Traditional Hard Drive**: Like a filing cabinet with drawers (blocks) that you organize yourself
+- **Block Storage in Cloud**: Virtual filing cabinets that can be attached/detached from different VMs
+
+`lsblk` {{ execute }}
+
+**Understanding the output:**
+```
+NAME    MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+xvda    202:0    0   20G  0 disk
+└─xvda1 202:1    0   20G  0 part /
+xvdf    202:80   0  100G  0 disk
+
+Let's decode this:
+NAME: Device name
+  xvda, xvdf = Device names (varies by cloud provider)
+  └─xvda1 = Partition 1 on xvda
+MAJ:MIN: Major and minor device numbers (kernel identifiers)
+RM: Removable (1=yes, 0=no)
+SIZE: Storage size
+RO: Read-only (1=yes, 0=no)
+TYPE: Type of device
+  disk = Whole disk
+  part = Partition
+  lvm = LVM logical volume
+MOUNTPOINT: Where it's accessible in the filesystem
+```
+
+#### Types of Storage in Cloud VMs
+
+1. **Root/Boot Volume**
+   - Contains the operating system
+   - Usually 8-20GB for Ubuntu
+   - Deleted when VM is terminated (usually)
+
+2. **Data Volumes**
+   - Additional storage you attach
+   - Persists independently of VM
+   - Can be detached and reattached to different VMs
+
+3. **Ephemeral Storage**
+   - Temporary storage that comes with some VM types
+   - Lost when VM stops/restarts
+   - Good for temporary files, cache
+
+`df -h` {{ execute }}
+
+**Output explanation:**
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/xvda1       20G  5.5G   14G  30% /
+/dev/xvdf       100G   33M  100G   1% /data
+
+Filesystem: The device or partition
+Size: Total space
+Used: Space used
+Avail: Space available
+Use%: Percentage used
+Mounted on: Where you access it
+```
+
+### Understanding Partitions
+
+A **partition** is a logical division of a physical disk. It's like dividing a large room into smaller rooms with walls.
+
+#### Why Use Partitions?
+
+`Reasons to partition: 1) Separate OS from data 2) Different filesystems for different uses 3) Prevent one area from filling entire disk 4) Security and mount options per partition` {{ info }}
+
+`sudo fdisk -l` {{ execute }}
+
+**Output shows:**
+```
+Disk /dev/xvda: 20 GiB, 21474836480 bytes
+Disk model:
+Units: sectors of 1 * 512 = 512 bytes
+Sector size (logical/physical): 512 bytes / 512 bytes
+
+Device     Start      End  Sectors Size Type
+/dev/xvda1  2048 41943039 41940992  20G Linux
+
+Understanding sectors:
+Sectors are the smallest units of storage (usually 512 bytes)
+Start/End show sector numbers where partition begins/ends
+```
+
+#### Creating Partitions
+
+`CAUTION: Partitioning can destroy data! Always backup first!` {{ danger }}
+
+`sudo fdisk -l /dev/xvdf` {{ copy }}
+
+`sudo fdisk /dev/xvdf` {{ copy }}
+
+`Inside fdisk, you'll see: Command (m for help). Common fdisk commands: m - Display help menu, p - Print partition table, n - Create new partition, d - Delete partition, t - Change partition type, w - Write changes and exit, q - Quit without saving` {{ info }}
+
+**Let's create a partition:**
+- Type 'n' for new partition
+- Partition type: p (primary)
+- Partition number: 1 (or press Enter for default)
+- First sector: (press Enter for default)
+- Last sector: +50G (creates 50GB partition) or press Enter to use all space
+- Type 'w' to write changes
+
+`sudo partprobe /dev/xvdf` {{ copy }}
+
+`lsblk /dev/xvdf` {{ copy }}
+
+**Expected output:**
+```
+xvdf    202:80   0  100G  0 disk
+└─xvdf1 202:81   0  100G  0 part
+```
+
+#### GPT vs MBR Partition Tables
+
+`Two partition table types: MBR (Master Boot Record) - Older: Max 4 primary partitions, Max 2TB disk size, Legacy BIOS systems. GPT (GUID Partition Table) - Modern: 128 partitions by default, Huge disk sizes (9.4 ZB), UEFI systems, Has backup partition table` {{ info }}
+
+`sudo gdisk /dev/xvdf` {{ copy }}
+
+`sudo parted /dev/xvdf mklabel gpt` {{ copy }}
+
+`sudo parted /dev/xvdf mklabel msdos` {{ copy }}
+
+### Understanding Filesystems
+
+A **filesystem** is how data is organized and stored on a partition. It's like choosing between different filing systems - alphabetical, by date, by category, etc.
+
+#### Common Linux Filesystems
+
+`ext4 (Fourth Extended Filesystem) - Default for Ubuntu, Mature, stable, fast, Good for general use, Supports files up to 16TB. xfs (XFS Filesystem) - High performance, Good for large files, Used by RHEL/CentOS, Cannot shrink (only grow). btrfs (B-tree Filesystem) - Modern, advanced features, Snapshots, compression, Still maturing, Copy-on-write. zfs (Z File System) - Advanced features, Data integrity checking, Snapshots, compression, Requires more RAM` {{ info }}
+
+`df -T` {{ execute }}
+
+**Output:**
+```
+Filesystem     Type  Size  Used Avail Use% Mounted on
+/dev/xvda1     ext4   20G  5.5G   14G  30% /
+```
+
+#### Creating Filesystems
+
+`After partitioning, you need to create a filesystem. This is called "formatting" the partition` {{ info }}
+
+`sudo mkfs.ext4 /dev/xvdf1` {{ execute }}
+
+**What happens:**
+```
+Writing inode tables: done
+Creating journal (32768 blocks): done
+Writing superblocks and filesystem accounting information: done
+
+Let's understand these terms:
+- Inodes: Data structures that store file information
+- Journal: Logs changes for crash recovery
+- Superblocks: Filesystem metadata
+```
+
+`sudo mkfs.ext4 -L "data-volume" /dev/xvdf1` {{ copy }}
+
+`Labels help identify volumes` {{ tip }}
+
+`sudo mkfs.xfs /dev/xvdf1` {{ copy }}
+
+`sudo mkfs.btrfs /dev/xvdf1` {{ copy }}
+
+`sudo file -s /dev/xvdf1` {{ copy }}
+
+### Mounting Filesystems
+
+**Mounting** is making a filesystem accessible at a certain point in your directory tree. It's like connecting a USB drive to your computer - it needs to be "mounted" before you can access the files.
+
+#### Understanding Mount Points
+
+`A mount point is a directory where a filesystem is attached. Think of it like this: Your main filesystem is a building (/), A mount point is a door (/mnt/data), Mounting connects another building through that door. Common mount points: / - Root filesystem, /home - User home directories (often separate), /var - Variable data (logs, databases), /tmp - Temporary files, /mnt - Temporary mounts, /media - Removable media, /opt - Optional software` {{ info }}
+
+#### Mounting and Unmounting
+
+`sudo mkdir -p /mnt/data` {{ execute }}
+
+`sudo mount /dev/xvdf1 /mnt/data` {{ execute }}
+
+`mount | grep xvdf1` {{ execute }}
+
+**Output:** `/dev/xvdf1 on /mnt/data type ext4 (rw,relatime)`
+
+`df -h /mnt/data` {{ execute }}
+
+`cd /mnt/data && ls -la` {{ execute }}
+
+`First, leave the mount point before unmounting!` {{ warning }}
+
+`cd / && sudo umount /mnt/data` {{ execute }}
+
+**Common mount options:**
+
+`sudo mount -o ro /dev/xvdf1 /mnt/data` {{ copy }}
+
+`sudo mount -o noexec /dev/xvdf1 /mnt/data` {{ copy }}
+
+`sudo mount -o uid=1000,gid=1000 /dev/xvdf1 /mnt/data` {{ copy }}
+
+`If unmount fails: "target is busy". Find what's using it:` {{ info }}
+
+`sudo lsof /mnt/data` {{ copy }}
+
+`sudo fuser -vm /mnt/data` {{ copy }}
+
+`Force unmount (careful!)` {{ warning }}
+
+`sudo umount -f /mnt/data` {{ copy }}
+
+`sudo umount -l /mnt/data` {{ copy }}
+
+#### Persistent Mounting with /etc/fstab
+
+The `/etc/fstab` file tells Linux what to mount at boot time.
+
+`cat /etc/fstab` {{ execute }}
+
+**Understanding fstab format:**
+`<device> <mount-point> <filesystem> <options> <dump> <pass>`
+
+**Example line:**
+`/dev/xvdf1 /mnt/data ext4 defaults 0 2`
+
+**Let's decode each field:**
+```
+1. Device: What to mount
+   - /dev/xvdf1 - Device name
+   - UUID=xxx - UUID (better, survives device renaming)
+   - LABEL=data - Label
+
+2. Mount point: Where to mount it
+   - /mnt/data - Directory path
+
+3. Filesystem: Type of filesystem
+   - ext4, xfs, btrfs, etc.
+
+4. Options: Mount options (comma-separated)
+   - defaults = rw,suid,dev,exec,auto,nouser,async
+   - ro = read-only
+   - noexec = no program execution
+   - noatime = don't update access times (performance)
+   - errors=remount-ro = remount read-only on errors
+
+5. Dump: Backup utility (obsolete)
+   - 0 = don't backup
+   - 1 = backup
+
+6. Pass: Filesystem check order at boot
+   - 0 = don't check
+   - 1 = check first (root filesystem)
+   - 2 = check after root
+```
+
+`sudo blkid /dev/xvdf1` {{ copy }}
+
+**Output:** `/dev/xvdf1: UUID="a1b2c3d4-..." TYPE="ext4" LABEL="data-volume"`
+
+`echo "UUID=a1b2c3d4-... /mnt/data ext4 defaults,noatime 0 2" | sudo tee -a /etc/fstab` {{ copy }}
+
+`Be careful! Errors in fstab can prevent boot!` {{ danger }}
+
+`sudo mount -a` {{ execute }}
+
+`Test without rebooting. If errors, fix immediately!` {{ warning }}
+
+`mount | grep /mnt/data` {{ execute }}
+
+### Logical Volume Manager (LVM)
+
+**LVM** is a flexible way to manage storage. Instead of being limited by physical partitions, LVM lets you create logical volumes that can span multiple disks and be resized on the fly.
+
+#### Understanding LVM Concepts
+
+Think of LVM like managing water storage:
+
+1. **Physical Volumes (PV)** - Water tanks (actual disks/partitions)
+2. **Volume Groups (VG)** - Connected tank system (pool of storage)
+3. **Logical Volumes (LV)** - Taps/faucets (usable volumes)
+
+```
+The LVM stack:
+  Filesystem (ext4, xfs)
+        ↓
+  Logical Volume (LV)
+        ↓
+  Volume Group (VG)
+        ↓
+  Physical Volume (PV)
+        ↓
+  Partition or Disk
+```
+
+#### Setting Up LVM
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install lvm2` {{ execute }}
+
+**1. Create Physical Volume**
+
+`sudo pvcreate /dev/xvdf1` {{ execute }}
+
+**Output:** `Physical volume "/dev/xvdf1" successfully created.`
+
+`sudo pvs` {{ execute }}
+
+**Output:**
+```
+PV         VG  Fmt  Attr PSize  PFree
+/dev/xvdf1     lvm2 ---  100.00g 100.00g
+```
+
+`sudo pvdisplay /dev/xvdf1` {{ execute }}
+
+**2. Create Volume Group**
+
+`sudo vgcreate data_vg /dev/xvdf1` {{ execute }}
+
+**Output:** `Volume group "data_vg" successfully created`
+
+`sudo vgs` {{ execute }}
+
+**Output:**
+```
+VG      #PV #LV #SN Attr   VSize  VFree
+data_vg   1   0   0 wz--n- 100.00g 100.00g
+```
+
+**3. Create Logical Volume**
+
+`sudo lvcreate -L 50G -n app_lv data_vg` {{ copy }}
+
+`sudo lvcreate -l 50%VG -n app_lv data_vg` {{ copy }}
+
+`sudo lvs` {{ execute }}
+
+**Output:**
+```
+LV     VG      Attr       LSize  Pool Origin Data%
+app_lv data_vg -wi-a----- 50.00g
+```
+
+`ls -l /dev/data_vg/app_lv` {{ execute }}
+
+`ls -l /dev/mapper/data_vg-app_lv` {{ execute }}
+
+**4. Create filesystem on LV**
+
+`sudo mkfs.ext4 /dev/data_vg/app_lv` {{ execute }}
+
+**5. Mount the LV**
+
+`sudo mkdir /mnt/app` {{ execute }}
+
+`sudo mount /dev/data_vg/app_lv /mnt/app` {{ execute }}
+
+`echo "/dev/data_vg/app_lv /mnt/app ext4 defaults 0 2" | sudo tee -a /etc/fstab` {{ execute }}
+
+#### LVM Operations
+
+**Extend Logical Volume (the killer feature!)**
+
+`sudo lvextend -L +20G /dev/data_vg/app_lv` {{ copy }}
+
+`sudo lvextend -L 70G /dev/data_vg/app_lv` {{ copy }}
+
+**Resize filesystem to use new space**
+
+`For ext4:` {{ info }}
+
+`sudo resize2fs /dev/data_vg/app_lv` {{ copy }}
+
+`For xfs:` {{ info }}
+
+`sudo xfs_growfs /mnt/app` {{ copy }}
+
+**Reduce Logical Volume (ext4 only, not xfs)**
+
+`CAREFUL: Can lose data if done wrong!` {{ danger }}
+
+`sudo umount /mnt/app` {{ copy }}
+
+`sudo e2fsck -f /dev/data_vg/app_lv` {{ copy }}
+
+`sudo resize2fs /dev/data_vg/app_lv 30G` {{ copy }}
+
+`sudo lvreduce -L 30G /dev/data_vg/app_lv` {{ copy }}
+
+`sudo mount /dev/data_vg/app_lv /mnt/app` {{ copy }}
+
+**Add new disk to Volume Group**
+
+`sudo pvcreate /dev/xvdg` {{ copy }}
+
+`sudo vgextend data_vg /dev/xvdg` {{ copy }}
+
+`sudo vgs` {{ execute }}
+
+**Create snapshot (backup point)**
+
+`sudo lvcreate -L 10G -s -n app_snapshot /dev/data_vg/app_lv` {{ copy }}
+
+`Snapshot only stores changes, not full copy` {{ tip }}
+
+**Restore from snapshot**
+
+`sudo umount /mnt/app` {{ copy }}
+
+`sudo lvconvert --merge /dev/data_vg/app_snapshot` {{ copy }}
+
+`Merges snapshot back to origin` {{ info }}
+
+**Remove logical volume**
+
+`sudo umount /mnt/app` {{ copy }}
+
+`sudo lvremove /dev/data_vg/app_lv` {{ copy }}
+
+### Disk Performance and Optimization
+
+Understanding and optimizing disk performance is crucial for application performance.
+
+#### Measuring Disk Performance
+
+`iostat -x 1` {{ execute }}
+
+**Key metrics explained:**
+```
+r/s, w/s: Reads/writes per second
+rkB/s, wkB/s: KB read/written per second
+await: Average wait time for I/O (milliseconds)
+%util: How busy the disk is (100% = fully busy)
+```
+
+`iostat -x 1 /dev/xvda` {{ copy }}
+
+`sudo apt install iotop` {{ execute }}
+
+`sudo iotop` {{ execute }}
+
+**Inside iotop:**
+- O - Only show processes doing I/O
+- P - Sort by PID
+- A - Accumulated I/O (since iotop started)
+
+**Test disk speed**
+
+`dd if=/dev/zero of=/mnt/data/testfile bs=1G count=1 oflag=direct` {{ execute }}
+
+**Output:** `1073741824 bytes (1.1 GB, 1.0 GiB) copied, 10.5 s, 102 MB/s`
+
+`dd if=/mnt/data/testfile of=/dev/null bs=1G count=1 iflag=direct` {{ execute }}
+
+`rm /mnt/data/testfile` {{ execute }}
+
+#### Filesystem Tuning
+
+`sudo tune2fs -l /dev/xvdf1 | grep -E "Block count|Block size|Inode count"` {{ execute }}
+
+`Reserved blocks (root emergency space). By default, ext4 reserves 5% for root. On large data volumes, this wastes space` {{ info }}
+
+`sudo tune2fs -l /dev/xvdf1 | grep "Reserved block count"` {{ execute }}
+
+`sudo tune2fs -m 1 /dev/xvdf1` {{ copy }}
+
+`Disable access time updates for performance. Add noatime to mount options in /etc/fstab: /dev/xvdf1 /mnt/data ext4 defaults,noatime 0 2` {{ tip }}
+
+`For databases, consider: noatime - Don't update access times, nodiratime - Don't update directory access times, nobarrier - Disable write barriers (only with battery-backed RAID)` {{ info }}
+
+**Increase read-ahead for sequential workloads**
+
+`sudo blockdev --getra /dev/xvda` {{ execute }}
+
+`sudo blockdev --setra 1024 /dev/xvda` {{ copy }}
+
+`echo 'ACTION=="add|change", KERNEL=="xvda", ATTR{queue/read_ahead_kb}="512"' | sudo tee /etc/udev/rules.d/60-read-ahead.rules` {{ copy }}
+
+---
+
+## Chapter 8: File Management and Backups
+
+### Backup Strategies for Cloud VMs
+
+Backups are your insurance against data loss. In cloud environments, you have multiple backup options.
+
+#### Understanding Backup Types
+
+`Full Backup - Complete copy of all data, Slowest but simplest to restore, Uses most storage. Incremental Backup - Only changes since last backup (full or incremental), Fastest, least storage, Complex restore (need full + all incrementals). Differential Backup - Changes since last full backup, Balance of speed and simplicity, Easier restore than incremental. Snapshot - Point-in-time copy of entire disk, Very fast (copy-on-write), Cloud provider specific` {{ info }}
+
+#### The 3-2-1 Backup Rule
+
+`3-2-1 Rule: 3 - Keep 3 copies of important data, 2 - Store on 2 different storage types, 1 - Keep 1 copy offsite. Example implementation: 1. Primary: Live data on VM, 2. Local backup: Different volume on same VM, 3. Remote backup: Cloud object storage or different region` {{ info }}
+
+### Using rsync for Backups
+
+**rsync** is a powerful tool for efficient file copying and synchronization.
+
+#### Understanding rsync
+
+`rsync only copies what's changed, saving time and bandwidth` {{ info }}
+
+**Basic syntax:** `rsync [options] source destination`
+
+`rsync -av /source/dir/ /backup/dir/` {{ execute }}
+
+**Key options explained:**
+```
+-a: Archive mode (preserves permissions, times, etc.)
+    Equals: -rlptgoD
+    -r: recursive
+    -l: copy symlinks as symlinks
+    -p: preserve permissions
+    -t: preserve times
+    -g: preserve group
+    -o: preserve owner
+    -D: preserve devices and special files
+-v: Verbose (show what's being copied)
+-h: Human-readable sizes
+-z: Compress during transfer
+--progress: Show progress bar
+--delete: Delete files in dest that aren't in source
+```
+
+`IMPORTANT: Trailing slash matters! rsync -av /source/dir/ /dest/ copies contents of dir. rsync -av /source/dir /dest/ copies dir itself` {{ warning }}
+
+#### Practical rsync Backup Script
+
+```bash
+#!/bin/bash
+# backup_script.sh - Incremental backup using rsync
+
+# Configuration
+SOURCE_DIR="/var/www/html"
+BACKUP_DIR="/backup"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_PATH="$BACKUP_DIR/$DATE"
+LATEST_LINK="$BACKUP_DIR/latest"
+LOG_FILE="/var/log/backup.log"
+
+# Function to log messages
+log_message() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log_message "Starting backup of $SOURCE_DIR"
+
+# Create backup directory
+mkdir -p "$BACKUP_PATH"
+
+# If previous backup exists, use hard links to save space
+if [ -L "$LATEST_LINK" ]; then
+    log_message "Using hard links from previous backup"
+    # --link-dest creates hard links to unchanged files
+    rsync -av --delete \
+          --link-dest="$LATEST_LINK" \
+          "$SOURCE_DIR/" \
+          "$BACKUP_PATH/" \
+          2>&1 | tee -a "$LOG_FILE"
+else
+    log_message "Creating first full backup"
+    rsync -av --delete \
+          "$SOURCE_DIR/" \
+          "$BACKUP_PATH/" \
+          2>&1 | tee -a "$LOG_FILE"
+fi
+
+# Update latest symlink
+rm -f "$LATEST_LINK"
+ln -s "$BACKUP_PATH" "$LATEST_LINK"
+
+# Delete old backups (keep last 7 days)
+find "$BACKUP_DIR" -maxdepth 1 -type d -name "20*" -mtime +7 -exec rm -rf {} \;
+
+log_message "Backup completed: $BACKUP_PATH"
+
+# Check backup size
+BACKUP_SIZE=$(du -sh "$BACKUP_PATH" | cut -f1)
+log_message "Backup size: $BACKUP_SIZE"
+
+# Send notification (optional)
+# echo "Backup completed: $BACKUP_SIZE" | mail -s "Backup Report" admin@example.com
+```
+
+#### Remote Backups with rsync
+
+`rsync -avz -e ssh /local/dir/ user@remote:/backup/dir/` {{ copy }}
+
+`rsync -avz -e "ssh -p 2222" /local/dir/ user@remote:/backup/dir/` {{ copy }}
+
+`rsync -avz -e "ssh -i ~/.ssh/backup_key" /local/dir/ user@remote:/backup/dir/` {{ copy }}
+
+`rsync -avz --bwlimit=1000 /local/dir/ user@remote:/backup/dir/` {{ copy }}
+
+`rsync -av --exclude='*.tmp' --exclude='cache/' /source/ /dest/` {{ copy }}
+
+**Using exclude file:**
+
+```bash
+cat > /tmp/exclude.txt << EOF
+*.tmp
+*.log
+cache/
+temp/
+.git/
+EOF
+```
+
+`rsync -av --exclude-from=/tmp/exclude.txt /source/ /dest/` {{ copy }}
+
+`rsync -avn /source/ /dest/` {{ copy }}
+
+`Dry run tests without actually copying` {{ tip }}
+
+### Compression and Archives
+
+Understanding how to compress and archive files is essential for backups and file transfers.
+
+#### tar - Tape Archive
+
+`tar combines multiple files into one archive` {{ info }}
+
+`tar -cvf archive.tar directory/` {{ execute }}
+
+**Options:** `c: Create, v: Verbose, f: File (specify filename)`
+
+`tar -czvf archive.tar.gz directory/` {{ execute }}
+
+`tar -cjvf archive.tar.bz2 directory/` {{ execute }}
+
+`tar -cJvf archive.tar.xz directory/` {{ execute }}
+
+`tar -xvf archive.tar` {{ execute }}
+
+`tar -xzvf archive.tar.gz -C /destination/` {{ execute }}
+
+`tar -tvf archive.tar.gz` {{ execute }}
+
+`tar -xzvf archive.tar.gz path/to/specific/file` {{ copy }}
+
+`tar -czvf "backup_$(date +%Y%m%d).tar.gz" /important/data/` {{ copy }}
+
+`tar -czvf archive.tar.gz --exclude='*.log' --exclude='temp/' directory/` {{ copy }}
+
+**Create incremental archive**
+
+`tar -czvf full_backup.tar.gz --listed-incremental=snapshot.snar directory/` {{ copy }}
+
+`tar -czvf incremental_$(date +%Y%m%d).tar.gz --listed-incremental=snapshot.snar directory/` {{ copy }}
+
+#### Compression Tools
+
+`gzip file.txt` {{ execute }}
+
+`gzip -k file.txt` {{ execute }}
+
+`gzip -d file.txt.gz` {{ execute }}
+
+`gunzip file.txt.gz` {{ execute }}
+
+`gzip -l file.txt.gz` {{ execute }}
+
+`bzip2 file.txt` {{ execute }}
+
+`bzip2 -k file.txt` {{ execute }}
+
+`bunzip2 file.txt.bz2` {{ execute }}
+
+`xz file.txt` {{ execute }}
+
+`xz -k file.txt` {{ execute }}
+
+`unxz file.txt.xz` {{ execute }}
+
+`zip archive.zip file1 file2 file3` {{ execute }}
+
+`zip -r archive.zip directory/` {{ execute }}
+
+`unzip archive.zip` {{ execute }}
+
+`unzip -l archive.zip` {{ execute }}
+
+`unzip archive.zip -d /destination/` {{ execute }}
+
+**Compare compression methods:**
+```
+ls -lh file.txt*
+-rw-r--r-- 1 user user 100M file.txt
+-rw-r--r-- 1 user user  30M file.txt.gz
+-rw-r--r-- 1 user user  25M file.txt.bz2
+-rw-r--r-- 1 user user  20M file.txt.xz
+```
+
+### Automated Backup Solutions
+
+#### Setting Up Automated Backups with Cron
+
+```bash
+#!/bin/bash
+# Daily backup script
+
+# Configuration
+BACKUP_SOURCES=(
+    "/etc"
+    "/var/www"
+    "/home"
+)
+BACKUP_DEST="/backup/daily"
+RETENTION_DAYS=30
+LOG_FILE="/var/log/daily_backup.log"
+
+# Create backup directory with date
+BACKUP_DATE=$(date +%Y%m%d)
+BACKUP_PATH="$BACKUP_DEST/$BACKUP_DATE"
+mkdir -p "$BACKUP_PATH"
+
+# Backup each source
+for SOURCE in "${BACKUP_SOURCES[@]}"; do
+    # Get source name for archive
+    SOURCE_NAME=$(basename "$SOURCE")
+
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backing up $SOURCE" >> "$LOG_FILE"
+
+    tar -czf "$BACKUP_PATH/${SOURCE_NAME}.tar.gz" "$SOURCE" 2>> "$LOG_FILE"
+
+    if [ $? -eq 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Success: $SOURCE" >> "$LOG_FILE"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed: $SOURCE" >> "$LOG_FILE"
+    fi
+done
+
+# Delete old backups
+find "$BACKUP_DEST" -type d -name "20*" -mtime +$RETENTION_DAYS -exec rm -rf {} \; 2>/dev/null
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup completed" >> "$LOG_FILE"
+```
+
+`sudo chmod +x /usr/local/bin/daily_backup.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+**Add this line for daily backup at 2 AM:** `0 2 * * * /usr/local/bin/daily_backup.sh`
+
+**Or use systemd timer (modern approach):**
+
+```
+[Unit]
+Description=Daily Backup Service
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/daily_backup.sh
+StandardOutput=journal
+StandardError=journal
+```
+
+```
+[Unit]
+Description=Daily Backup Timer
+Requires=backup.service
+
+[Timer]
+OnCalendar=daily
+OnCalendar=02:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable --now backup.timer` {{ execute }}
+
+`systemctl list-timers --all | grep backup` {{ execute }}
+
+#### Backup to Cloud Storage
+
+`curl https://rclone.org/install.sh | sudo bash` {{ execute }}
+
+`rclone config` {{ execute }}
+
+**Example: Configure S3-compatible storage**
+```
+n) New remote
+name> s3-backup
+Storage> s3
+Provider> AWS
+access_key_id> YOUR_KEY
+secret_access_key> YOUR_SECRET
+region> us-east-1
+location_constraint>
+acl> private
+```
+
+`rclone listremotes` {{ execute }}
+
+`rclone sync /local/backup/ s3-backup:my-bucket/backups/ --progress` {{ copy }}
+
+**Backup script with rclone:**
+
+```bash
+#!/bin/bash
+# cloud_backup.sh
+
+LOCAL_BACKUP="/backup/daily"
+REMOTE="s3-backup:my-bucket/$(hostname)/backups"
+LOG_FILE="/var/log/cloud_backup.log"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting cloud sync" >> "$LOG_FILE"
+
+# Sync to cloud (only upload changes)
+rclone sync "$LOCAL_BACKUP" "$REMOTE" \
+    --transfers 4 \
+    --checkers 8 \
+    --contimeout 60s \
+    --timeout 300s \
+    --retries 3 \
+    --low-level-retries 10 \
+    --stats 1m \
+    --stats-log-level NOTICE \
+    --log-file "$LOG_FILE"
+
+if [ $? -eq 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cloud sync completed" >> "$LOG_FILE"
+
+    # Optional: Remove old local backups after successful cloud sync
+    find "$LOCAL_BACKUP" -type d -mtime +7 -exec rm -rf {} \; 2>/dev/null
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Cloud sync failed!" >> "$LOG_FILE"
+fi
+```
+
+### Snapshot Management
+
+Snapshots provide point-in-time copies of your data.
+
+#### LVM Snapshots
+
+`Snapshot only stores changes (Copy-on-Write)` {{ info }}
+
+`sudo lvcreate -L 5G -s -n app_lv_snapshot /dev/data_vg/app_lv` {{ copy }}
+
+`sudo lvs` {{ execute }}
+
+`Look for 's' attribute indicating snapshot` {{ tip }}
+
+`sudo mkdir /mnt/snapshot` {{ execute }}
+
+`sudo mount -o ro /dev/data_vg/app_lv_snapshot /mnt/snapshot` {{ copy }}
+
+`rsync -av /mnt/snapshot/ /backup/consistent_backup/` {{ copy }}
+
+`sudo umount /mnt/snapshot` {{ execute }}
+
+`sudo lvremove /dev/data_vg/app_lv_snapshot` {{ execute }}
+
+**Restore from snapshot**
+
+`WARNING: This replaces current data with snapshot!` {{ danger }}
+
+`sudo umount /mnt/app` {{ copy }}
+
+`sudo lvconvert --merge /dev/data_vg/app_lv_snapshot` {{ copy }}
+
+`Reboot or remount to complete merge` {{ info }}
+
+#### Filesystem Snapshots (Btrfs)
+
+`sudo btrfs subvolume snapshot /mnt/data /mnt/data/.snapshots/$(date +%Y%m%d)` {{ copy }}
+
+`sudo btrfs subvolume list /mnt/data` {{ execute }}
+
+`sudo btrfs subvolume delete /mnt/data/.snapshots/20240101` {{ copy }}
+
+**Restore from snapshot**
+
+`sudo cp -a /mnt/data/.snapshots/20240115/* /mnt/data/` {{ copy }}
+
+`sudo mv /mnt/data /mnt/data.old && sudo btrfs subvolume snapshot /mnt/data/.snapshots/20240115 /mnt/data` {{ copy }}
+
+### Disaster Recovery Planning
+
+#### Creating a Recovery Plan
+
+```markdown
+# Disaster Recovery Plan
+
+## Critical Systems
+1. Web Server (nginx)
+2. Database (MySQL)
+3. Application Server
+
+## Backup Locations
+- Local: /backup/daily/
+- Remote: s3://backup-bucket/
+- Snapshots: LVM snapshots every 6 hours
+
+## Recovery Procedures
+
+### 1. System Won't Boot
+- Boot from Ubuntu Live USB
+- Mount root filesystem
+- Check /var/log/syslog for errors
+- Run fsck if filesystem errors
+
+### 2. Corrupted Files
+- Check most recent backup
+- Restore from /backup/daily/latest/
+- If not available, check cloud backup
+
+### 3. Database Recovery
+- Stop MySQL: systemctl stop mysql
+- Backup current data: cp -r /var/lib/mysql /tmp/mysql_broken
+- Restore from backup: tar -xzf /backup/daily/latest/mysql.tar.gz -C /
+- Start MySQL: systemctl start mysql
+- Verify data integrity
+
+### 4. Complete System Restoration
+1. Boot fresh Ubuntu installation
+2. Install necessary packages
+3. Restore /etc from backup
+4. Restore application data
+5. Restore database
+6. Verify services
+
+## Important Contacts
+- System Admin: admin@example.com
+- Cloud Provider Support: 1-800-xxx-xxxx
+- Backup Service: backup@provider.com
+
+## Testing Schedule
+- Monthly: Restore single file
+- Quarterly: Restore database to test system
+- Annually: Complete disaster recovery drill
+```
+
+#### Recovery Testing Script
+
+```bash
+#!/bin/bash
+# test_recovery.sh - Test backup restoration
+
+TEST_DIR="/tmp/recovery_test_$(date +%Y%m%d)"
+BACKUP_SOURCE="/backup/daily/latest"
+LOG_FILE="/var/log/recovery_test.log"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting recovery test" | tee -a "$LOG_FILE"
+
+# Create test directory
+mkdir -p "$TEST_DIR"
+
+# Test file restoration
+echo "Testing file restoration..." | tee -a "$LOG_FILE"
+tar -xzf "$BACKUP_SOURCE/etc.tar.gz" -C "$TEST_DIR" etc/hostname 2>/dev/null
+
+if [ -f "$TEST_DIR/etc/hostname" ]; then
+    echo "✓ File restoration successful" | tee -a "$LOG_FILE"
+else
+    echo "✗ File restoration failed!" | tee -a "$LOG_FILE"
+    exit 1
+fi
+
+# Test database restoration (dry run)
+echo "Testing database backup integrity..." | tee -a "$LOG_FILE"
+tar -tzf "$BACKUP_SOURCE/mysql.tar.gz" > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "✓ Database backup is valid" | tee -a "$LOG_FILE"
+else
+    echo "✗ Database backup is corrupted!" | tee -a "$LOG_FILE"
+    exit 1
+fi
+
+# Clean up
+rm -rf "$TEST_DIR"
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Recovery test completed" | tee -a "$LOG_FILE"
+
+# Send report
+# mail -s "Recovery Test Report" admin@example.com < "$LOG_FILE"
+```
+
+### Key Takeaways
+
+1. **Understand storage types** - Root volumes vs data volumes in cloud
+2. **Use LVM for flexibility** - Resize volumes without downtime
+3. **Always backup before partitioning** - Mistakes can destroy data
+4. **Use UUIDs in fstab** - More reliable than device names
+5. **Test your backups** - Untested backups are just hopes
+6. **Follow 3-2-1 rule** - Multiple copies, different media, offsite
+7. **Automate backups** - Manual backups get forgotten
+8. **Document recovery procedures** - Stress makes people forget
+9. **Use appropriate compression** - Balance speed vs space
+10. **Monitor disk usage** - Prevent full disks before they happen
+
+### Learning Resources
+
+- **LVM Guide**: https://wiki.archlinux.org/title/LVM
+- **Filesystem Comparison**: https://wiki.archlinux.org/title/File_systems
+- **rsync Tutorial**: https://www.digitalocean.com/community/tutorials/how-to-use-rsync-to-sync-local-and-remote-directories
+- **Backup Best Practices**: https://www.backblaze.com/blog/the-3-2-1-backup-strategy/
+- **Disaster Recovery**: https://www.redhat.com/sysadmin/disaster-recovery-planning
+
+`The best backup is the one you have when you need it. Regular testing ensures your backups actually work when disaster strikes` {{ tip }}

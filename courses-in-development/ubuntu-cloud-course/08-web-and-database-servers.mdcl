@@ -1,0 +1,617 @@
+# Part 8: Web and Database Servers
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic networking concepts (ports, protocols, IP addresses)
+- How to manage services with systemctl
+- Basic file permissions and ownership
+- How to edit configuration files
+- Package management with APT
+
+**Learning Resources:**
+- [Nginx Documentation](https://nginx.org/en/docs/)
+- [Apache Documentation](https://httpd.apache.org/docs/)
+- [MySQL Documentation](https://dev.mysql.com/doc/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+
+---
+
+## Chapter 18: Web Server Administration
+
+### Introduction to Web Servers
+
+A web server is software that serves web content to clients (browsers) over HTTP/HTTPS. The two most popular web servers for Ubuntu are:
+
+1. **Nginx** - High-performance, lightweight, excellent for static content and as a reverse proxy
+2. **Apache** - Feature-rich, highly configurable, excellent module ecosystem
+
+We'll focus primarily on Nginx but also cover Apache basics.
+
+### Nginx Installation and Configuration
+
+#### Installing Nginx
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install nginx -y` {{ execute }}
+
+`nginx -v` {{ execute }}
+
+`sudo systemctl start nginx` {{ execute }}
+
+`sudo systemctl enable nginx` {{ execute }}
+
+`sudo systemctl status nginx` {{ execute }}
+
+`sudo nginx -t` {{ execute }}
+
+`ps aux | grep nginx` {{ execute }}
+
+`Nginx runs a master process and multiple worker processes for handling requests` {{ info }}
+
+#### Understanding Nginx Architecture
+
+`ls -la /etc/nginx/` {{ execute }}
+
+`ls -la /var/www/html/` {{ execute }}
+
+`ls -la /var/log/nginx/` {{ execute }}
+
+`The sites-enabled directory contains symlinks to sites-available - this allows easy enabling/disabling` {{ tip }}
+
+#### Basic Nginx Configuration
+
+`sudo nano /etc/nginx/nginx.conf` {{ copy }}
+
+`worker_processes auto automatically sets workers to number of CPU cores` {{ info }}
+
+#### Creating Your First Website
+
+`sudo nano /etc/nginx/sites-available/mywebsite` {{ copy }}
+
+`sudo mkdir -p /var/www/mywebsite` {{ execute }}
+
+`sudo chown -R www-data:www-data /var/www/mywebsite` {{ execute }}
+
+`sudo nano /var/www/mywebsite/index.html` {{ copy }}
+
+`sudo ln -s /etc/nginx/sites-available/mywebsite /etc/nginx/sites-enabled/` {{ execute }}
+
+`sudo nginx -t` {{ execute }}
+
+`sudo systemctl reload nginx` {{ execute }}
+
+`curl http://localhost` {{ execute }}
+
+`Always test nginx config with nginx -t before reloading to avoid breaking the server` {{ warning }}
+
+### Virtual Hosts Configuration
+
+Virtual hosts allow you to host multiple websites on a single server.
+
+#### Name-based Virtual Hosts
+
+`sudo nano /etc/nginx/sites-available/site1.com` {{ copy }}
+
+`sudo nano /etc/nginx/sites-available/site2.com` {{ copy }}
+
+`sudo mkdir -p /var/www/{site1.com,site2.com}` {{ execute }}
+
+`sudo chown -R www-data:www-data /var/www/site1.com` {{ execute }}
+
+`sudo chown -R www-data:www-data /var/www/site2.com` {{ execute }}
+
+`sudo ln -s /etc/nginx/sites-available/site1.com /etc/nginx/sites-enabled/` {{ execute }}
+
+`sudo ln -s /etc/nginx/sites-available/site2.com /etc/nginx/sites-enabled/` {{ execute }}
+
+`sudo nginx -t && sudo systemctl reload nginx` {{ execute }}
+
+`Name-based virtual hosts use the Host header to determine which site to serve` {{ info }}
+
+#### Port-based Virtual Hosts
+
+Port-based virtual hosts listen on different ports for different sites.
+
+### Local Reverse Proxy
+
+A reverse proxy forwards client requests to backend servers. This is useful for:
+- Load balancing
+- Hiding backend servers
+- Adding SSL/TLS termination
+- Caching
+
+#### Basic Reverse Proxy Configuration
+
+`sudo nano /etc/nginx/sites-available/reverse-proxy` {{ copy }}
+
+`Reverse proxies sit between clients and backend servers, forwarding requests` {{ info }}
+
+#### Reverse Proxy with Load Balancing
+
+Load balancing distributes traffic across multiple backend servers.
+
+`least_conn sends requests to the server with fewest active connections` {{ tip }}
+
+### Static Site Hosting
+
+#### Optimized Static Site Configuration
+
+`sudo nano /etc/nginx/sites-available/static-site` {{ copy }}
+
+`expires 1y means browsers cache files for 1 year - great for static assets` {{ tip }}
+
+### Apache as Alternative
+
+#### Installing Apache
+
+`sudo apt install apache2 -y` {{ execute }}
+
+`sudo systemctl stop nginx` {{ copy }}
+
+`sudo systemctl disable nginx` {{ copy }}
+
+`sudo systemctl start apache2` {{ execute }}
+
+`sudo systemctl enable apache2` {{ execute }}
+
+`sudo systemctl status apache2` {{ execute }}
+
+`Apache and Nginx both use port 80 by default - only one can run at a time` {{ warning }}
+
+#### Basic Apache Configuration
+
+`ls -la /etc/apache2/` {{ execute }}
+
+`sudo nano /etc/apache2/sites-available/mysite.conf` {{ copy }}
+
+`sudo a2ensite mysite.conf` {{ execute }}
+
+`sudo a2enmod rewrite` {{ execute }}
+
+`sudo a2enmod headers` {{ execute }}
+
+`sudo a2enmod ssl` {{ execute }}
+
+`sudo a2dissite 000-default.conf` {{ execute }}
+
+`sudo apache2ctl configtest` {{ execute }}
+
+`sudo systemctl reload apache2` {{ execute }}
+
+`a2ensite and a2dissite are Apache-specific commands for enabling/disabling sites` {{ info }}
+
+### Web Server Security
+
+#### Nginx Security Hardening
+
+`sudo nano /etc/nginx/snippets/security.conf` {{ copy }}
+
+`sudo nano /etc/nginx/sites-available/secure-site` {{ copy }}
+
+`Security headers like X-Frame-Options prevent clickjacking attacks` {{ info }}
+
+#### SSL/TLS Configuration
+
+`sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/ssl/private/nginx-selfsigned.key -out /etc/ssl/certs/nginx-selfsigned.crt -subj "/C=US/ST=State/L=City/O=Organization/CN=example.com"` {{ copy }}
+
+`sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048` {{ copy }}
+
+`sudo nano /etc/nginx/snippets/ssl-params.conf` {{ copy }}
+
+`For production, use Let's Encrypt for free valid SSL certificates instead of self-signed` {{ tip }}
+
+`TLSv1.2 and TLSv1.3 are the only secure protocols - older versions have vulnerabilities` {{ warning }}
+
+### Performance Optimization
+
+#### Nginx Performance Tuning
+
+`sudo nano /etc/nginx/nginx.conf` {{ copy }}
+
+`worker_rlimit_nofile should match system's ulimit -n value` {{ info }}
+
+#### Caching Configuration
+
+Caching reduces load on backend servers and speeds up responses.
+
+`FastCGI cache stores rendered PHP pages, reducing database queries` {{ tip }}
+
+---
+
+## Chapter 19: Database Server Management
+
+### Introduction to Database Servers
+
+Database servers store and manage structured data for applications. We'll cover:
+1. **MySQL/MariaDB** - Popular relational database
+2. **PostgreSQL** - Advanced open-source relational database
+
+### MySQL/MariaDB Setup
+
+#### Installing MySQL
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install mysql-server -y` {{ execute }}
+
+`mysql --version` {{ execute }}
+
+`sudo systemctl start mysql` {{ execute }}
+
+`sudo systemctl enable mysql` {{ execute }}
+
+`sudo systemctl status mysql` {{ execute }}
+
+#### Securing MySQL Installation
+
+`sudo mysql_secure_installation` {{ execute }}
+
+`mysql_secure_installation removes test databases and anonymous users, improving security` {{ info }}
+
+#### MySQL Configuration
+
+`sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf` {{ copy }}
+
+`sudo systemctl restart mysql` {{ execute }}
+
+`innodb_buffer_pool_size should be 70-80% of RAM for dedicated database servers` {{ tip }}
+
+#### Basic MySQL Administration
+
+`sudo mysql` {{ execute }}
+
+`mysql -u root -p` {{ copy }}
+
+`CREATE DATABASE myapp_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;` {{ copy }}
+
+`CREATE USER 'myapp_user'@'localhost' IDENTIFIED BY 'strong_password';` {{ copy }}
+
+`GRANT ALL PRIVILEGES ON myapp_db.* TO 'myapp_user'@'localhost';` {{ copy }}
+
+`GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.* TO 'myapp_user'@'localhost';` {{ copy }}
+
+`CREATE USER 'remote_user'@'%' IDENTIFIED BY 'strong_password';` {{ copy }}
+
+`GRANT ALL PRIVILEGES ON myapp_db.* TO 'remote_user'@'%';` {{ copy }}
+
+`SELECT User, Host FROM mysql.user;` {{ execute }}
+
+`SHOW GRANTS FOR 'myapp_user'@'localhost';` {{ copy }}
+
+`FLUSH PRIVILEGES;` {{ execute }}
+
+`EXIT;` {{ execute }}
+
+`Always use strong passwords and limit privileges to only what's needed` {{ warning }}
+
+`% in host means any host - use specific IPs or subnets in production` {{ danger }}
+
+#### Creating and Managing Databases
+
+`mysql -u myapp_user -p myapp_db` {{ copy }}
+
+`SHOW DATABASES;` {{ execute }}
+
+`SHOW TABLES;` {{ execute }}
+
+`DESCRIBE users;` {{ copy }}
+
+`SHOW CREATE TABLE users\G` {{ copy }}
+
+`utf8mb4 is the correct character set for full Unicode support including emojis` {{ info }}
+
+### PostgreSQL Basics
+
+#### Installing PostgreSQL
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install postgresql postgresql-contrib -y` {{ execute }}
+
+`psql --version` {{ execute }}
+
+`sudo systemctl status postgresql` {{ execute }}
+
+`sudo -i -u postgres` {{ execute }}
+
+`PostgreSQL creates a postgres system user for database administration` {{ info }}
+
+#### PostgreSQL Configuration
+
+`ls /etc/postgresql/*/main/` {{ execute }}
+
+`sudo nano /etc/postgresql/14/main/postgresql.conf` {{ copy }}
+
+`sudo nano /etc/postgresql/14/main/pg_hba.conf` {{ copy }}
+
+`sudo systemctl restart postgresql` {{ execute }}
+
+`pg_hba.conf controls authentication - be very careful with changes` {{ warning }}
+
+#### Basic PostgreSQL Administration
+
+`sudo -u postgres psql` {{ execute }}
+
+`CREATE DATABASE myapp_db;` {{ copy }}
+
+`CREATE USER myapp_user WITH PASSWORD 'strong_password';` {{ copy }}
+
+`GRANT ALL PRIVILEGES ON DATABASE myapp_db TO myapp_user;` {{ copy }}
+
+`ALTER DATABASE myapp_db OWNER TO myapp_user;` {{ copy }}
+
+`\l` {{ execute }}
+
+`\du` {{ execute }}
+
+`\c myapp_db` {{ copy }}
+
+`\dt` {{ execute }}
+
+`\d users` {{ copy }}
+
+`\q` {{ execute }}
+
+`PostgreSQL's backslash commands (like \l, \dt) are psql-specific shortcuts` {{ info }}
+
+### Database Security
+
+#### MySQL Security Best Practices
+
+`mysql -u root -p` {{ execute }}
+
+`DELETE FROM mysql.user WHERE User='root' AND Host NOT IN ('localhost', '127.0.0.1', '::1');` {{ copy }}
+
+`DELETE FROM mysql.user WHERE User='';` {{ copy }}
+
+`DROP DATABASE IF EXISTS test;` {{ copy }}
+
+`DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';` {{ copy }}
+
+`CREATE USER 'readonly'@'localhost' IDENTIFIED BY 'password';` {{ copy }}
+
+`GRANT SELECT ON myapp_db.* TO 'readonly'@'localhost';` {{ copy }}
+
+`CREATE USER 'appuser'@'localhost' IDENTIFIED BY 'password';` {{ copy }}
+
+`GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.* TO 'appuser'@'localhost';` {{ copy }}
+
+`SHOW VARIABLES LIKE '%ssl%';` {{ copy }}
+
+`FLUSH PRIVILEGES;` {{ execute }}
+
+`Principle of least privilege: only grant permissions that are actually needed` {{ tip }}
+
+#### PostgreSQL Security
+
+`REVOKE CREATE ON SCHEMA public FROM PUBLIC;` {{ copy }}
+
+`PostgreSQL has fine-grained permissions - you can control access at table and column level` {{ info }}
+
+### Database Backup and Recovery
+
+#### MySQL Backup Strategies
+
+`mysqldump -u root -p --all-databases > all_databases_backup.sql` {{ copy }}
+
+`mysqldump -u root -p myapp_db > myapp_db_backup.sql` {{ copy }}
+
+`mysqldump -u root -p myapp_db | gzip > myapp_db_backup.sql.gz` {{ copy }}
+
+`mysqldump -u root -p --routines --triggers myapp_db > myapp_db_full.sql` {{ copy }}
+
+`mysqldump -u root -p myapp_db users posts > tables_backup.sql` {{ copy }}
+
+`mysqldump -u root -p --single-transaction myapp_db > myapp_db_consistent.sql` {{ copy }}
+
+`sudo nano /usr/local/bin/mysql-backup.sh` {{ copy }}
+
+`--single-transaction ensures consistent backups for InnoDB tables without locking` {{ tip }}
+
+#### MySQL Recovery
+
+`mysql -u root -p < all_databases_backup.sql` {{ copy }}
+
+`mysql -u root -p myapp_db < myapp_db_backup.sql` {{ copy }}
+
+`gunzip < myapp_db_backup.sql.gz | mysql -u root -p myapp_db` {{ copy }}
+
+`mysql -u root -p myapp_db < tables_backup.sql` {{ copy }}
+
+`Always test restores on a separate system to verify backups work` {{ warning }}
+
+#### PostgreSQL Backup and Recovery
+
+`sudo -u postgres pg_dump myapp_db > myapp_db_backup.sql` {{ copy }}
+
+`sudo -u postgres pg_dump myapp_db | gzip > myapp_db_backup.sql.gz` {{ copy }}
+
+`sudo -u postgres pg_dump -Fc myapp_db > myapp_db_backup.custom` {{ copy }}
+
+`sudo -u postgres pg_dumpall > all_databases_backup.sql` {{ copy }}
+
+`sudo nano /usr/local/bin/postgresql-backup.sh` {{ copy }}
+
+`sudo -u postgres psql myapp_db < myapp_db_backup.sql` {{ copy }}
+
+`sudo -u postgres pg_restore -d myapp_db myapp_db_backup.custom` {{ copy }}
+
+`sudo -u postgres pg_restore -d myapp_db -t users myapp_db_backup.custom` {{ copy }}
+
+`PostgreSQL's custom format (-Fc) allows selective restores and parallel operations` {{ tip }}
+
+### Performance Tuning
+
+#### MySQL Performance Optimization
+
+`mysql -u root -p` {{ execute }}
+
+`SHOW VARIABLES LIKE 'slow_query%';` {{ copy }}
+
+`SHOW VARIABLES LIKE 'long_query_time';` {{ copy }}
+
+`SET GLOBAL slow_query_log = 'ON';` {{ copy }}
+
+`SET GLOBAL long_query_time = 2;` {{ copy }}
+
+`EXPLAIN SELECT * FROM users WHERE email = 'user@example.com';` {{ copy }}
+
+`SHOW FULL PROCESSLIST;` {{ execute }}
+
+`KILL QUERY process_id;` {{ copy }}
+
+`ANALYZE TABLE users;` {{ copy }}
+
+`OPTIMIZE TABLE users;` {{ copy }}
+
+`SHOW TABLE STATUS LIKE 'users'\G` {{ copy }}
+
+`SHOW ENGINE INNODB STATUS\G` {{ copy }}
+
+`EXPLAIN shows query execution plan - use it to identify missing indexes` {{ tip }}
+
+#### PostgreSQL Performance Tuning
+
+`CREATE EXTENSION IF NOT EXISTS pg_stat_statements;` {{ copy }}
+
+`SELECT query, calls, total_exec_time, mean_exec_time FROM pg_stat_statements ORDER BY mean_exec_time DESC LIMIT 10;` {{ copy }}
+
+`EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'user@example.com';` {{ copy }}
+
+`SELECT pid, usename, application_name, state, query FROM pg_stat_activity WHERE state != 'idle';` {{ copy }}
+
+`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid != pg_backend_pid() AND query_start < now() - interval '5 minutes';` {{ copy }}
+
+`VACUUM ANALYZE users;` {{ copy }}
+
+`REINDEX TABLE users;` {{ copy }}
+
+`EXPLAIN ANALYZE shows actual execution time - better than plain EXPLAIN` {{ tip }}
+
+### Database Monitoring
+
+#### MySQL Monitoring Script
+
+`sudo nano /usr/local/bin/mysql-monitor.sh` {{ copy }}
+
+### Maintenance Tasks
+
+#### Automated Maintenance
+
+`sudo nano /usr/local/bin/database-maintenance.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+`Regular VACUUM in PostgreSQL prevents transaction ID wraparound and reclaims space` {{ info }}
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Web Server Setup
+1. Install and configure Nginx
+2. Create three virtual hosts with different content
+3. Set up a reverse proxy to a local application
+4. Implement SSL/TLS with self-signed certificates
+5. Configure caching and compression
+
+### Exercise 2: Database Administration
+1. Install both MySQL and PostgreSQL
+2. Create databases and users with appropriate privileges
+3. Import sample data and run queries
+4. Set up automated backups for both databases
+5. Monitor and optimize query performance
+
+### Exercise 3: Security Hardening
+1. Secure both web server and database installations
+2. Configure firewalls to allow only necessary ports
+3. Implement rate limiting on the web server
+4. Set up SSL/TLS for database connections
+5. Create security audit scripts
+
+### Exercise 4: Performance Testing
+1. Use Apache Bench (ab) to test web server performance
+2. Optimize web server configuration based on results
+3. Create load on databases and identify slow queries
+4. Implement caching strategies
+5. Document performance improvements
+
+---
+
+## Quick Reference
+
+### Nginx Commands
+`sudo nginx -t` {{ copy }}
+
+`sudo nginx -s reload` {{ copy }}
+
+`sudo nginx -s stop` {{ copy }}
+
+`sudo systemctl restart nginx` {{ copy }}
+
+`tail -f /var/log/nginx/access.log` {{ copy }}
+
+`tail -f /var/log/nginx/error.log` {{ copy }}
+
+### MySQL Commands
+`sudo systemctl status mysql` {{ copy }}
+
+`mysql -u root -p` {{ copy }}
+
+`mysqldump db_name > backup.sql` {{ copy }}
+
+`mysql db_name < backup.sql` {{ copy }}
+
+`mysqlcheck --all-databases` {{ copy }}
+
+### PostgreSQL Commands
+`sudo -u postgres psql` {{ copy }}
+
+`pg_dump dbname > backup.sql` {{ copy }}
+
+`psql dbname < backup.sql` {{ copy }}
+
+`vacuumdb --all` {{ copy }}
+
+### Performance Testing
+`ab -n 1000 -c 10 http://localhost/` {{ copy }}
+
+`curl -w "@curl-format.txt" -o /dev/null -s http://localhost/` {{ copy }}
+
+`mysqlslap --auto-generate-sql --number-of-queries=1000` {{ copy }}
+
+`pgbench -i -s 10 mydb` {{ copy }}
+
+---
+
+## Additional Resources
+
+### Web Server Resources
+- [Nginx Documentation](https://nginx.org/en/docs/)
+- [Apache HTTP Server Documentation](https://httpd.apache.org/docs/)
+- [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
+- [Web Server Security Guidelines](https://owasp.org/www-project-web-security-testing-guide/)
+
+### Database Resources
+- [MySQL Reference Manual](https://dev.mysql.com/doc/refman/8.0/en/)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [Database Security Best Practices](https://www.cisecurity.org/benchmark/postgresql)
+- [SQL Tutorial](https://www.w3schools.com/sql/)
+
+### Performance Tools
+- [GTmetrix](https://gtmetrix.com/) - Web performance testing
+- [Percona Toolkit](https://www.percona.com/software/database-tools/percona-toolkit) - MySQL tools
+- [pgBadger](https://pgbadger.darold.net/) - PostgreSQL log analyzer
+- [MySQLTuner](https://github.com/major/MySQLTuner-perl) - MySQL optimization
+
+### Next Steps
+After completing this section, you should:
+- Be able to set up and configure web servers
+- Understand database installation and administration
+- Know how to secure web and database servers
+- Be able to optimize performance
+- Have backup and recovery procedures in place
+
+Continue to develop your skills by building real applications and experimenting with advanced configurations.

@@ -1,0 +1,594 @@
+# Part 7: Monitoring and Performance
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic Linux commands and system navigation
+- How to read and analyze log files
+- Understanding of processes and services
+- Basic networking concepts
+- How to use systemctl and journalctl
+
+**Learning Resources:**
+- [Linux Performance Analysis](http://www.brendangregg.com/linuxperf.html)
+- [Prometheus Documentation](https://prometheus.io/docs/introduction/overview/)
+- [System Performance Tuning](https://www.kernel.org/doc/html/latest/admin-guide/sysctl/index.html)
+- [Ubuntu Performance Guide](https://ubuntu.com/server/docs/performance)
+
+---
+
+## Chapter 16: System Monitoring
+
+### Introduction to System Monitoring
+
+Effective monitoring helps you:
+- Detect problems before they become critical
+- Understand system behavior and usage patterns
+- Plan capacity and resources
+- Troubleshoot performance issues
+- Ensure service availability
+
+### Resource Monitoring (CPU, RAM, Disk, Network)
+
+#### CPU Monitoring
+
+`top` {{ execute }}
+
+`htop` {{ execute }}
+
+`lscpu` {{ execute }}
+
+`cat /proc/cpuinfo` {{ execute }}
+
+`mpstat 1 5` {{ execute }}
+
+`mpstat -P ALL 1` {{ copy }}
+
+`pidstat 1 5` {{ copy }}
+
+`pidstat -u -p PID 1` {{ copy }}
+
+`sar -u 1 10` {{ copy }}
+
+`sar -u -f /var/log/sysstat/sa01` {{ copy }}
+
+`uptime` {{ execute }}
+
+`cat /proc/loadavg` {{ execute }}
+
+`Load average shows 1, 5, and 15 minute averages. Should be less than number of CPU cores` {{ info }}
+
+`In top, press '1' to see all CPU cores, 'h' for help, 'q' to quit` {{ tip }}
+
+#### Memory Monitoring
+
+`free -h` {{ execute }}
+
+`vmstat 1 5` {{ execute }}
+
+`ps aux --sort=-%mem | head -20` {{ execute }}
+
+`cat /proc/meminfo` {{ execute }}
+
+`swapon --show` {{ execute }}
+
+`cat /proc/swaps` {{ execute }}
+
+`sudo slabtop` {{ execute }}
+
+`sar -r 1 10` {{ copy }}
+
+`pmap -x PID` {{ copy }}
+
+`smem -tk` {{ copy }}
+
+`sudo cat /proc/PID/status | grep -i vm` {{ copy }}
+
+`buff/cache memory can be freed if needed - it's used for speeding up disk access` {{ info }}
+
+#### Disk Monitoring
+
+`df -h` {{ execute }}
+
+`df -i` {{ execute }}
+
+`du -sh /var/*` {{ execute }}
+
+`du -sh * | sort -rh | head -20` {{ execute }}
+
+`iostat -x 1 5` {{ execute }}
+
+`iotop` {{ execute }}
+
+`pidstat -d 1 5` {{ copy }}
+
+`cat /proc/diskstats` {{ copy }}
+
+`sar -d 1 10` {{ copy }}
+
+`sudo smartctl -a /dev/sda` {{ copy }}
+
+`sudo fatrace` {{ copy }}
+
+`find / -type f -size +100M 2>/dev/null | head -20` {{ copy }}
+
+`inotifywait -m -r /path/to/watch` {{ copy }}
+
+`Use df -i to check inode usage - you can run out of inodes before disk space` {{ warning }}
+
+#### Network Monitoring
+
+`ip -s addr show` {{ execute }}
+
+`ifconfig -a` {{ execute }}
+
+`iftop` {{ execute }}
+
+`ss -tulpn` {{ execute }}
+
+`ss -tan` {{ execute }}
+
+`netstat -tulpn` {{ copy }}
+
+`nethogs` {{ execute }}
+
+`vnstat` {{ execute }}
+
+`vnstat -l` {{ copy }}
+
+`vnstat -h` {{ copy }}
+
+`vnstat -d` {{ copy }}
+
+`sar -n DEV 1 5` {{ copy }}
+
+`sar -n TCP 1 5` {{ copy }}
+
+`sudo tcpdump -i eth0 -n` {{ copy }}
+
+`sudo tcpdump -i any port 80` {{ copy }}
+
+`sudo conntrack -L` {{ copy }}
+
+`mtr google.com` {{ copy }}
+
+`ss is the modern replacement for netstat - faster and provides more information` {{ tip }}
+
+### Process Monitoring
+
+`ps aux` {{ execute }}
+
+`ps -ef` {{ execute }}
+
+`pstree` {{ execute }}
+
+`pstree -p` {{ copy }}
+
+`top` {{ execute }}
+
+`htop` {{ execute }}
+
+`pidstat -p PID 1` {{ copy }}
+
+`strace -p PID` {{ copy }}
+
+`cat /proc/PID/limits` {{ copy }}
+
+`lsof -p PID` {{ copy }}
+
+`lsof -u username` {{ copy }}
+
+`taskset -cp PID` {{ copy }}
+
+`sudo execsnoop` {{ copy }}
+
+`/usr/bin/time -v command` {{ copy }}
+
+`strace shows system calls made by a process - useful for debugging` {{ info }}
+
+### Log Analysis
+
+`ls /var/log/` {{ execute }}
+
+`journalctl` {{ execute }}
+
+`journalctl -xe` {{ execute }}
+
+`journalctl -u nginx` {{ copy }}
+
+`journalctl --since "1 hour ago"` {{ copy }}
+
+`journalctl --since "2024-01-01" --until "2024-01-02"` {{ copy }}
+
+`tail -f /var/log/syslog` {{ execute }}
+
+`tail -f /var/log/auth.log` {{ execute }}
+
+`tail -f /var/log/kern.log` {{ execute }}
+
+`multitail /var/log/nginx/access.log /var/log/nginx/error.log` {{ copy }}
+
+`grep "error" /var/log/syslog | wc -l` {{ copy }}
+
+`awk '{print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head -10` {{ copy }}
+
+`goaccess /var/log/nginx/access.log` {{ copy }}
+
+`sudo logrotate -d /etc/logrotate.conf` {{ copy }}
+
+`journalctl -xe shows recent entries with explanations - great for troubleshooting` {{ tip }}
+
+#### Creating Log Analysis Script
+
+`sudo nano /usr/local/bin/analyze-logs.sh` {{ copy }}
+
+### Performance Baselines
+
+Establishing baselines helps identify abnormal behavior.
+
+`sudo nano /usr/local/bin/collect-baseline.sh` {{ copy }}
+
+`Performance baselines help you understand what's "normal" for your system` {{ info }}
+
+#### Analyzing Performance Trends
+
+`sudo nano /usr/local/bin/analyze-trends.sh` {{ copy }}
+
+### Alerting Setup
+
+Configure alerts for critical metrics.
+
+`sudo nano /usr/local/bin/system-alerts.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+`Set thresholds based on your application's needs - one size doesn't fit all` {{ tip }}
+
+### Prometheus Node Exporter
+
+Prometheus is a powerful monitoring system with a time-series database.
+
+#### Installing Node Exporter
+
+`cd /tmp` {{ execute }}
+
+`wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz` {{ copy }}
+
+`tar xzf node_exporter-1.7.0.linux-amd64.tar.gz` {{ execute }}
+
+`sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/` {{ execute }}
+
+`sudo chmod +x /usr/local/bin/node_exporter` {{ execute }}
+
+`sudo useradd --no-create-home --shell /bin/false node_exporter` {{ execute }}
+
+`sudo nano /etc/systemd/system/node_exporter.service` {{ copy }}
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable node_exporter` {{ execute }}
+
+`sudo systemctl start node_exporter` {{ execute }}
+
+`curl http://localhost:9100/metrics` {{ execute }}
+
+`Node exporter exposes system metrics in Prometheus format on port 9100` {{ info }}
+
+#### Installing Prometheus
+
+`cd /tmp` {{ execute }}
+
+`wget https://github.com/prometheus/prometheus/releases/download/v2.48.0/prometheus-2.48.0.linux-amd64.tar.gz` {{ copy }}
+
+`tar xzf prometheus-2.48.0.linux-amd64.tar.gz` {{ execute }}
+
+`sudo cp prometheus-2.48.0.linux-amd64/{prometheus,promtool} /usr/local/bin/` {{ execute }}
+
+`sudo chmod +x /usr/local/bin/{prometheus,promtool}` {{ execute }}
+
+`sudo mkdir -p /etc/prometheus /var/lib/prometheus` {{ execute }}
+
+`sudo cp -r prometheus-2.48.0.linux-amd64/{consoles,console_libraries} /etc/prometheus/` {{ execute }}
+
+`sudo nano /etc/prometheus/prometheus.yml` {{ copy }}
+
+`sudo nano /etc/systemd/system/prometheus.service` {{ copy }}
+
+`sudo useradd --no-create-home --shell /bin/false prometheus` {{ execute }}
+
+`sudo chown -R prometheus:prometheus /etc/prometheus /var/lib/prometheus` {{ execute }}
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable prometheus` {{ execute }}
+
+`sudo systemctl start prometheus` {{ execute }}
+
+`Access Prometheus UI at http://your-server:9090` {{ info }}
+
+### Custom Metrics
+
+Create custom metrics for application monitoring.
+
+#### Custom Metric Exporter
+
+`sudo nano /usr/local/bin/custom_exporter.py` {{ copy }}
+
+`chmod +x /usr/local/bin/custom_exporter.py` {{ execute }}
+
+`pip3 install prometheus_client psutil` {{ execute }}
+
+`sudo nano /etc/systemd/system/custom_exporter.service` {{ copy }}
+
+`Prometheus can scrape metrics from any HTTP endpoint that exposes metrics in its format` {{ tip }}
+
+---
+
+## Chapter 17: Performance Optimization
+
+### Kernel Parameters
+
+Kernel parameters control system behavior at the lowest level.
+
+#### Viewing and Setting Kernel Parameters
+
+`sysctl -a` {{ execute }}
+
+`sysctl net.ipv4.tcp_keepalive_time` {{ copy }}
+
+`sudo sysctl -w net.ipv4.tcp_keepalive_time=600` {{ copy }}
+
+`sudo nano /etc/sysctl.conf` {{ copy }}
+
+`sudo nano /etc/sysctl.d/99-performance.conf` {{ copy }}
+
+`Changes with sysctl -w are temporary. Add to /etc/sysctl.d/ for persistence` {{ warning }}
+
+#### Network Performance Tuning
+
+`sudo nano /etc/sysctl.d/99-network-performance.conf` {{ copy }}
+
+`sudo sysctl -p /etc/sysctl.d/99-network-performance.conf` {{ execute }}
+
+`TCP BBR is a modern congestion control algorithm from Google that improves throughput` {{ info }}
+
+### Memory Management
+
+#### Memory Tuning Parameters
+
+`sudo nano /etc/sysctl.d/99-memory-performance.conf` {{ copy }}
+
+`vm.swappiness=10 means swap is only used when RAM is 90% full` {{ info }}
+
+#### Analyzing Memory Usage
+
+`sudo nano /usr/local/bin/analyze-memory.sh` {{ copy }}
+
+### I/O Optimization
+
+#### Disk I/O Tuning
+
+`cat /sys/block/sda/queue/scheduler` {{ execute }}
+
+`echo mq-deadline | sudo tee /sys/block/nvme0n1/queue/scheduler` {{ copy }}
+
+`sudo nano /etc/default/grub` {{ copy }}
+
+`sudo update-grub` {{ execute }}
+
+`sudo blockdev --setra 4096 /dev/sda` {{ copy }}
+
+`cat /sys/block/sda/queue/nr_requests` {{ execute }}
+
+`echo 512 | sudo tee /sys/block/sda/queue/nr_requests` {{ copy }}
+
+`For SSDs use noop/none scheduler. For HDDs use mq-deadline or cfq` {{ tip }}
+
+#### Filesystem Optimization
+
+`sudo nano /etc/fstab` {{ copy }}
+
+`sudo tune2fs -o journal_data_writeback /dev/sda1` {{ copy }}
+
+`sudo xfs_admin -L mylabel /dev/sdb1` {{ copy }}
+
+`mount -o noatime,nodiratime,nobarrier,logbufs=8 /dev/sdb1 /mnt/data` {{ copy }}
+
+`noatime prevents updating file access times, reducing write operations` {{ info }}
+
+### Network Tuning
+
+#### Interface Tuning
+
+`ethtool eth0` {{ execute }}
+
+`sudo ethtool -G eth0 rx 4096 tx 4096` {{ copy }}
+
+`sudo ethtool -K eth0 gso on` {{ copy }}
+
+`sudo ethtool -K eth0 gro on` {{ copy }}
+
+`sudo ethtool -K eth0 tso on` {{ copy }}
+
+`sudo ethtool -C eth0 rx-usecs 100` {{ copy }}
+
+`grep eth0 /proc/interrupts` {{ copy }}
+
+`echo 2 | sudo tee /proc/irq/24/smp_affinity_list` {{ copy }}
+
+`GSO, GRO, and TSO are hardware offload features that improve network performance` {{ info }}
+
+#### TCP Optimization Script
+
+`sudo nano /usr/local/bin/optimize-tcp.sh` {{ copy }}
+
+### Application Performance
+
+#### Application Profiling
+
+`sudo apt install linux-tools-common linux-tools-generic` {{ execute }}
+
+`sudo perf record -g -p PID sleep 30` {{ copy }}
+
+`sudo perf report` {{ execute }}
+
+`git clone https://github.com/brendangregg/FlameGraph` {{ execute }}
+
+`sudo perf record -F 99 -ag -- sleep 30` {{ copy }}
+
+`sudo perf script | ./FlameGraph/stackcollapse-perf.pl | ./FlameGraph/flamegraph.pl > perf.svg` {{ copy }}
+
+`sudo apt install valgrind` {{ execute }}
+
+`valgrind --leak-check=full --show-leak-kinds=all ./application` {{ copy }}
+
+`valgrind --tool=massif ./application` {{ copy }}
+
+`ms_print massif.out.*` {{ copy }}
+
+`Flame graphs visualize where CPU time is spent - wider means more time` {{ tip }}
+
+#### Application Tuning Examples
+
+`sudo nano /etc/nginx/nginx.conf` {{ copy }}
+
+`sudo nano /etc/mysql/mysql.conf.d/optimization.cnf` {{ copy }}
+
+`For production, set innodb_buffer_pool_size to 70-80% of available RAM` {{ info }}
+
+### Troubleshooting Performance Issues
+
+#### Performance Troubleshooting Checklist
+
+`sudo nano /usr/local/bin/performance-check.sh` {{ copy }}
+
+### Capacity Planning
+
+Plan for future resource needs based on current trends.
+
+#### Capacity Planning Script
+
+`sudo nano /usr/local/bin/capacity-planning.sh` {{ copy }}
+
+`Capacity planning prevents outages by predicting when you'll run out of resources` {{ info }}
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Monitoring Setup
+1. Install and configure Prometheus with node_exporter
+2. Create custom metrics for your application
+3. Set up alerting rules for critical thresholds
+4. Create a dashboard to visualize metrics
+5. Document your monitoring architecture
+
+### Exercise 2: Performance Baseline
+1. Create scripts to collect performance baselines
+2. Run baseline collection during different workloads
+3. Analyze variations and identify patterns
+4. Set up automated drift detection
+5. Create performance reports
+
+### Exercise 3: System Optimization
+1. Tune kernel parameters for your workload
+2. Optimize network settings for throughput
+3. Configure memory management for your applications
+4. Implement I/O optimization strategies
+5. Measure performance improvements
+
+### Exercise 4: Troubleshooting Practice
+1. Create a performance issue (high CPU, memory leak, etc.)
+2. Use monitoring tools to identify the problem
+3. Apply appropriate fixes
+4. Verify the resolution
+5. Document the troubleshooting process
+
+---
+
+## Quick Reference
+
+### Monitoring Commands
+`top, htop, mpstat, sar -u` {{ copy }}
+
+`ps aux --sort=-%cpu` {{ copy }}
+
+`free -h, vmstat, sar -r` {{ copy }}
+
+`ps aux --sort=-%mem` {{ copy }}
+
+`df -h, du -sh, iostat -x` {{ copy }}
+
+`iotop, sar -d` {{ copy }}
+
+`netstat -tulpn, ss -tulpn` {{ copy }}
+
+`iftop, nethogs, vnstat` {{ copy }}
+
+`sar -n DEV` {{ copy }}
+
+`ps aux, pstree, pidstat` {{ copy }}
+
+`strace -p PID, lsof -p PID` {{ copy }}
+
+`journalctl -xe, tail -f /var/log/syslog` {{ copy }}
+
+`grep ERROR /var/log/*.log` {{ copy }}
+
+### Performance Tools
+`perf record/report` {{ copy }}
+
+`valgrind --leak-check=full` {{ copy }}
+
+`strace -c command` {{ copy }}
+
+`vmstat 1` {{ copy }}
+
+`iostat -x 1` {{ copy }}
+
+`sar -A` {{ copy }}
+
+`dstat -cdnm` {{ copy }}
+
+### Optimization Parameters
+`net.core.rmem_max` {{ copy }}
+
+`net.core.wmem_max` {{ copy }}
+
+`net.ipv4.tcp_congestion_control` {{ copy }}
+
+`vm.swappiness` {{ copy }}
+
+`vm.dirty_ratio` {{ copy }}
+
+`vm.overcommit_memory` {{ copy }}
+
+---
+
+## Additional Resources
+
+### Documentation
+- [Linux Performance](http://www.brendangregg.com/linuxperf.html)
+- [Prometheus Documentation](https://prometheus.io/docs/)
+- [Kernel Documentation](https://www.kernel.org/doc/html/latest/)
+- [Systems Performance Book](http://www.brendangregg.com/systems-performance.html)
+
+### Tools
+- [Grafana](https://grafana.com/) - Visualization platform
+- [Netdata](https://www.netdata.cloud/) - Real-time monitoring
+- [Glances](https://nicolargo.github.io/glances/) - Cross-platform monitoring
+- [BPF Tools](https://github.com/iovisor/bcc) - Advanced tracing
+
+### Performance Resources
+- [USE Method](http://www.brendangregg.com/usemethod.html)
+- [Linux Performance Tuning](https://www.kernel.org/doc/html/latest/admin-guide/kernel-parameters.html)
+- [TCP Tuning Guide](https://www.psc.edu/research/networking/tcptune/)
+
+### Next Steps
+After completing this section, you should:
+- Understand comprehensive system monitoring
+- Be able to identify performance bottlenecks
+- Know how to optimize system performance
+- Have tools for capacity planning
+
+Continue to Part 8: Web and Database Servers to learn about hosting web applications and databases.

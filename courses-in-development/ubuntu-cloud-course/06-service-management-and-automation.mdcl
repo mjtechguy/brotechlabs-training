@@ -1,0 +1,575 @@
+# Part 6: Service Management and Automation
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic Linux commands and file permissions
+- How to use systemctl to manage services
+- Basic text editing with nano or vim
+- How environment variables work
+- Basic understanding of processes and services
+
+**Learning Resources:**
+- [Cron How-To Guide](https://help.ubuntu.com/community/CronHowto)
+- [Bash Scripting Tutorial](https://www.gnu.org/software/bash/manual/)
+- [Ansible Documentation](https://docs.ansible.com/ansible/latest/user_guide/index.html)
+- [Cloud-init Documentation](https://cloudinit.readthedocs.io/)
+
+---
+
+## Chapter 14: Task Automation
+
+### Introduction to Automation
+
+Automation eliminates repetitive manual tasks, reduces errors, and ensures consistency. In Linux, we have multiple tools for automation:
+
+1. **Cron**: Traditional scheduled task runner
+2. **Systemd Timers**: Modern alternative to cron
+3. **Shell Scripts**: Custom automation logic
+4. **Configuration Management**: Tools like Ansible
+
+Let's explore each method in detail.
+
+### Cron Job Management
+
+Cron is a time-based job scheduler that runs commands at specified times or intervals.
+
+#### Understanding Cron
+
+`systemctl status cron` {{ execute }}
+
+`crontab -l` {{ execute }}
+
+`crontab -e` {{ execute }}
+
+`sudo crontab -l -u root` {{ copy }}
+
+`ls /etc/cron.*` {{ execute }}
+
+`cat /etc/crontab` {{ execute }}
+
+`Each user has their own crontab. The system crontab in /etc/crontab can run jobs as different users` {{ info }}
+
+#### Cron Syntax
+
+The cron syntax consists of five time fields followed by the command:
+
+`30 2 * * * /usr/local/bin/backup.sh` {{ copy }}
+
+`0 */4 * * * /usr/local/bin/check-disk.sh` {{ copy }}
+
+`15 3 * * 1 /usr/local/bin/weekly-report.sh` {{ copy }}
+
+`0 9-17 * * 1-5 /usr/local/bin/hourly-task.sh` {{ copy }}
+
+`*/5 * * * * /usr/local/bin/monitor.sh` {{ copy }}
+
+`@reboot /usr/local/bin/startup.sh` {{ copy }}
+
+`@daily /usr/local/bin/daily-task.sh` {{ copy }}
+
+`@weekly /usr/local/bin/weekly-task.sh` {{ copy }}
+
+`@monthly /usr/local/bin/monthly-task.sh` {{ copy }}
+
+`Use @reboot to run commands at system startup - great for initialization tasks` {{ tip }}
+
+#### Creating Cron Jobs
+
+`crontab -e` {{ execute }}
+
+`0 3 * * * /usr/local/bin/backup-website.sh >> /var/log/backup.log 2>&1` {{ copy }}
+
+`>> appends output to log file, 2>&1 redirects both stdout and stderr` {{ info }}
+
+`sudo nano /usr/local/bin/backup-website.sh` {{ copy }}
+
+`sudo chmod +x /usr/local/bin/backup-website.sh` {{ execute }}
+
+`sudo /usr/local/bin/backup-website.sh` {{ execute }}
+
+`Always test scripts manually before adding them to cron` {{ warning }}
+
+#### System Cron Jobs
+
+`sudo nano /etc/crontab` {{ execute }}
+
+`ls -la /etc/cron.d/` {{ execute }}
+
+`ls -la /etc/cron.daily/` {{ execute }}
+
+`ls -la /etc/cron.hourly/` {{ execute }}
+
+`ls -la /etc/cron.weekly/` {{ execute }}
+
+`ls -la /etc/cron.monthly/` {{ execute }}
+
+`sudo nano /etc/cron.d/system-monitor` {{ copy }}
+
+`Scripts in /etc/cron.daily run at 6:25 AM by default on Ubuntu` {{ info }}
+
+#### Cron Best Practices
+
+`PATH=/usr/local/bin:/usr/bin:/bin` {{ copy }}
+
+`0 3 * * * /path/to/script.sh >> /var/log/myscript.log 2>&1` {{ copy }}
+
+`Always use absolute paths in cron jobs - relative paths won't work` {{ danger }}
+
+`sudo nano /usr/local/bin/safe-backup.sh` {{ copy }}
+
+### Systemd Timers
+
+Systemd timers are a modern alternative to cron with more features and better integration.
+
+#### Creating a Systemd Timer
+
+`sudo nano /etc/systemd/system/backup.service` {{ copy }}
+
+`sudo nano /etc/systemd/system/backup.timer` {{ copy }}
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable backup.timer` {{ execute }}
+
+`sudo systemctl start backup.timer` {{ execute }}
+
+`systemctl status backup.timer` {{ execute }}
+
+`systemctl list-timers` {{ execute }}
+
+`journalctl -u backup.service` {{ execute }}
+
+`journalctl -u backup.timer` {{ execute }}
+
+`Systemd timers have better logging than cron - all output goes to journald` {{ tip }}
+
+#### Advanced Timer Examples
+
+`sudo nano /etc/systemd/system/monitor.timer` {{ copy }}
+
+`sudo nano /etc/systemd/system/cleanup.timer` {{ copy }}
+
+#### Timer Calendar Syntax
+
+`OnCalendar=minutely` {{ copy }}
+
+`OnCalendar=hourly` {{ copy }}
+
+`OnCalendar=daily` {{ copy }}
+
+`OnCalendar=weekly` {{ copy }}
+
+`OnCalendar=monthly` {{ copy }}
+
+`OnCalendar=*-*-* 04:00:00` {{ copy }}
+
+`OnCalendar=Mon..Fri 09:00:00` {{ copy }}
+
+`OnCalendar=Sat,Sun 10:00:00` {{ copy }}
+
+`OnCalendar=*-*-01 00:00:00` {{ copy }}
+
+`OnCalendar=*:0/30` {{ copy }}
+
+`systemd-analyze calendar "Mon..Fri 09:00:00"` {{ execute }}
+
+`systemd-analyze calendar --iterations=5 "daily"` {{ execute }}
+
+`Use systemd-analyze calendar to test timer expressions before creating the timer` {{ tip }}
+
+### Shell Scripting Basics
+
+Shell scripts automate complex tasks by combining commands with logic.
+
+#### Script Structure
+
+`nano myscript.sh` {{ execute }}
+
+`chmod +x myscript.sh` {{ execute }}
+
+`./myscript.sh` {{ execute }}
+
+`./ means "in current directory"` {{ info }}
+
+#### Variables and Input
+
+`read -p "Enter your name: " USERNAME` {{ copy }}
+
+`read -rsp "Enter password: " PASSWORD` {{ copy }}
+
+`SCRIPT_NAME=$0` {{ copy }}
+
+`FIRST_ARG=$1` {{ copy }}
+
+`ALL_ARGS=$@` {{ copy }}
+
+`ARG_COUNT=$#` {{ copy }}
+
+`BACKUP_DIR=${1:-"/backup"}` {{ copy }}
+
+`Command line arguments: $0 is script name, $1 is first argument, $# is count` {{ info }}
+
+#### Conditionals and Loops
+
+`if [ -f "/etc/nginx/nginx.conf" ]; then echo "Nginx installed"; fi` {{ copy }}
+
+`if [ "$CPU_COUNT" -gt 4 ]; then echo "High performance"; fi` {{ copy }}
+
+`if [ "$USER" = "root" ]; then echo "Running as root"; fi` {{ copy }}
+
+`if [ -d "/var/www" ]; then echo "Web root exists"; fi` {{ copy }}
+
+`if [ -r "/etc/passwd" ]; then echo "Can read passwd"; fi` {{ copy }}
+
+`if [ -x "/usr/bin/docker" ]; then echo "Docker installed"; fi` {{ copy }}
+
+`File tests: -f (file exists), -d (directory), -r (readable), -w (writable), -x (executable)` {{ info }}
+
+`for service in nginx mysql redis; do systemctl status "$service"; done` {{ copy }}
+
+`for i in {1..5}; do echo "Iteration $i"; done` {{ copy }}
+
+`while [ $counter -lt 10 ]; do echo $counter; ((counter++)); done` {{ copy }}
+
+`while IFS= read -r line; do echo "$line"; done < /etc/hosts` {{ copy }}
+
+`Always quote variables in shell scripts to handle spaces: "$variable" not $variable` {{ tip }}
+
+### Error Handling in Scripts
+
+Proper error handling makes scripts robust and reliable.
+
+#### Basic Error Handling
+
+`set -e` {{ copy }}
+
+`set -u` {{ copy }}
+
+`set -o pipefail` {{ copy }}
+
+`set -x` {{ copy }}
+
+`set -e exits on error, -u exits on undefined variables, -o pipefail exits on pipe failures` {{ info }}
+
+`trap 'error_handler $LINENO $?' ERR` {{ copy }}
+
+`trap cleanup EXIT` {{ copy }}
+
+`if ! command -v nginx &> /dev/null; then echo "nginx not installed"; exit 1; fi` {{ copy }}
+
+`Traps let you run cleanup code when scripts exit or encounter errors` {{ tip }}
+
+#### Advanced Error Handling
+
+`log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"; }` {{ copy }}
+
+`log_error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$ERROR_LOG" >&2; }` {{ copy }}
+
+`Color codes: RED='\033[0;31m', GREEN='\033[0;32m', NC='\033[0m' (no color)` {{ info }}
+
+### Log Rotation
+
+Log rotation prevents log files from consuming all disk space.
+
+#### Configuring Logrotate
+
+`ls /etc/logrotate.d/` {{ execute }}
+
+`cat /etc/logrotate.conf` {{ execute }}
+
+`sudo nano /etc/logrotate.d/myapp` {{ copy }}
+
+`sudo logrotate -d /etc/logrotate.d/myapp` {{ execute }}
+
+`sudo logrotate -f /etc/logrotate.d/myapp` {{ execute }}
+
+`sudo logrotate -f /etc/logrotate.conf` {{ execute }}
+
+`cat /var/lib/logrotate/status` {{ execute }}
+
+`logrotate -d runs in debug mode (dry run) - use this to test configurations` {{ tip }}
+
+### Automated Maintenance
+
+Create comprehensive maintenance scripts for routine tasks.
+
+#### System Maintenance Script
+
+`sudo nano /usr/local/bin/system-maintenance.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+### Monitoring Scripts
+
+Create scripts to monitor system health and performance.
+
+#### Resource Monitoring Script
+
+`sudo nano /usr/local/bin/monitor-resources.sh` {{ copy }}
+
+---
+
+## Chapter 15: Configuration Management
+
+### Infrastructure as Code Concepts
+
+Infrastructure as Code (IaC) treats infrastructure configuration as software code, enabling version control, testing, and automation.
+
+#### Key Principles
+
+1. **Declarative Configuration**: Describe the desired state, not the steps
+2. **Idempotency**: Running the same configuration multiple times produces the same result
+3. **Version Control**: Track all configuration changes
+4. **Automation**: Eliminate manual configuration
+
+`Idempotency means you can run the same script 100 times and get the same result` {{ info }}
+
+### Ansible Basics for Single Servers
+
+While Ansible is typically used for multiple servers, it's excellent for managing single servers too.
+
+#### Installing Ansible
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install ansible -y` {{ execute }}
+
+`ansible --version` {{ execute }}
+
+`ansible-galaxy collection install community.general` {{ execute }}
+
+#### Local Playbooks
+
+`mkdir -p ~/ansible/{playbooks,roles,inventory,group_vars,host_vars}` {{ execute }}
+
+`nano ~/ansible/inventory/local` {{ copy }}
+
+`nano ~/ansible/playbooks/setup-server.yml` {{ copy }}
+
+`ansible-playbook -i ~/ansible/inventory/local ~/ansible/playbooks/setup-server.yml` {{ copy }}
+
+`Ansible playbooks are idempotent - safe to run multiple times` {{ tip }}
+
+#### Managing Configuration Files
+
+`mkdir -p ~/ansible/templates` {{ execute }}
+
+`nano ~/ansible/templates/nginx-site.conf.j2` {{ copy }}
+
+`nano ~/ansible/playbooks/configure-nginx.yml` {{ copy }}
+
+`Jinja2 templates use {{ variable }} for substitution and {% %} for logic` {{ info }}
+
+#### System Hardening Playbook
+
+`nano ~/ansible/playbooks/security-hardening.yml` {{ copy }}
+
+### Cloud-init Deep Dive
+
+Cloud-init automatically configures cloud instances during boot.
+
+#### Understanding Cloud-init
+
+`cloud-init status` {{ execute }}
+
+`cat /etc/cloud/cloud.cfg` {{ execute }}
+
+`cat /var/lib/cloud/instance/user-data.txt` {{ execute }}
+
+`sudo cat /var/log/cloud-init.log` {{ execute }}
+
+`sudo cat /var/log/cloud-init-output.log` {{ execute }}
+
+`sudo cloud-init clean` {{ execute }}
+
+`sudo cloud-init init` {{ execute }}
+
+`cloud-init runs only on first boot by default. Use cloud-init clean to reset` {{ warning }}
+
+#### Cloud-init Configuration
+
+Cloud-init YAML examples use #cloud-config at the top.
+
+`Cloud-init can install packages, create users, write files, and run commands - all automatically` {{ tip }}
+
+#### Advanced Cloud-init Examples
+
+Cloud-init supports advanced features like disk partitioning, mounting volumes, and setting up cron jobs.
+
+### Template Management
+
+Templates allow dynamic configuration generation.
+
+#### Using Jinja2 Templates
+
+`sudo apt install python3-jinja2-cli` {{ execute }}
+
+`nano /etc/templates/config.j2` {{ copy }}
+
+`nano /etc/templates/vars.json` {{ copy }}
+
+`jinja2 /etc/templates/config.j2 /etc/templates/vars.json > /etc/myapp/config.ini` {{ copy }}
+
+`Templates separate configuration data from structure, making updates easier` {{ info }}
+
+### Configuration Drift
+
+Configuration drift occurs when systems deviate from their intended configuration.
+
+#### Detecting Configuration Drift
+
+`sudo nano /usr/local/bin/detect-drift.sh` {{ copy }}
+
+`Configuration drift is when servers slowly change from their baseline over time` {{ info }}
+
+### Change Tracking
+
+Track all system changes for audit and rollback purposes.
+
+#### Git-based Change Tracking
+
+`sudo apt install git` {{ execute }}
+
+`cd /etc` {{ execute }}
+
+`sudo git init` {{ execute }}
+
+`sudo git config user.name "System Admin"` {{ execute }}
+
+`sudo git config user.email "admin@example.com"` {{ execute }}
+
+`sudo nano /etc/.gitignore` {{ copy }}
+
+`sudo git add .` {{ execute }}
+
+`sudo git commit -m "Initial system configuration"` {{ execute }}
+
+`sudo nano /usr/local/bin/track-changes.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+`cd /etc` {{ execute }}
+
+`sudo git log --oneline` {{ execute }}
+
+`sudo git show HEAD` {{ execute }}
+
+`sudo git diff HEAD~1` {{ execute }}
+
+`Using git for /etc is called "etckeeper" and is a best practice for tracking config changes` {{ tip }}
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Automation Setup
+1. Create a cron job that backs up a directory daily
+2. Convert the same task to a systemd timer
+3. Compare the two methods and document pros/cons
+4. Set up log rotation for your backup logs
+5. Create email notifications for backup status
+
+### Exercise 2: Shell Scripting
+1. Write a script that monitors disk usage and sends alerts
+2. Create a deployment script with zero-downtime deployment
+3. Implement proper error handling and logging
+4. Add command-line argument parsing
+5. Create a test suite for your scripts
+
+### Exercise 3: Ansible Configuration
+1. Install Ansible and create a local inventory
+2. Write a playbook to configure a web server
+3. Use templates to manage configuration files
+4. Create a role for common server setup
+5. Implement idempotent configuration management
+
+### Exercise 4: Drift Detection
+1. Create a configuration baseline
+2. Implement drift detection for packages and configs
+3. Set up automated alerts for drift
+4. Create a rollback mechanism
+5. Document your drift management process
+
+---
+
+## Quick Reference
+
+### Cron Syntax
+`* * * * * command` {{ copy }}
+
+`@reboot` {{ copy }}
+
+`@daily` {{ copy }}
+
+`@weekly` {{ copy }}
+
+`@monthly` {{ copy }}
+
+`@yearly` {{ copy }}
+
+### Systemd Timer Commands
+`systemctl list-timers` {{ copy }}
+
+`systemctl status timer.timer` {{ copy }}
+
+`systemctl start timer.timer` {{ copy }}
+
+`systemctl enable timer.timer` {{ copy }}
+
+`journalctl -u timer.service` {{ copy }}
+
+`systemd-analyze calendar "daily"` {{ copy }}
+
+### Ansible Commands
+`ansible-playbook playbook.yml` {{ copy }}
+
+`ansible -m ping all` {{ copy }}
+
+`ansible -m setup localhost` {{ copy }}
+
+`ansible-vault encrypt file.yml` {{ copy }}
+
+`ansible-galaxy init role_name` {{ copy }}
+
+### Shell Script Testing
+`bash -n script.sh` {{ copy }}
+
+`bash -x script.sh` {{ copy }}
+
+`shellcheck script.sh` {{ copy }}
+
+`set -e` {{ copy }}
+
+`set -u` {{ copy }}
+
+`set -o pipefail` {{ copy }}
+
+---
+
+## Additional Resources
+
+### Documentation
+- [Cron Manual](https://man7.org/linux/man-pages/man5/crontab.5.html)
+- [Systemd Timer Documentation](https://www.freedesktop.org/software/systemd/man/systemd.timer.html)
+- [Bash Scripting Guide](https://www.gnu.org/software/bash/manual/bash.html)
+- [Ansible Best Practices](https://docs.ansible.com/ansible/latest/user_guide/playbooks_best_practices.html)
+
+### Tools
+- [ShellCheck](https://www.shellcheck.net/) - Shell script analysis
+- [Ansible Lint](https://ansible-lint.readthedocs.io/) - Ansible playbook linting
+- [Cloud-init Examples](https://cloudinit.readthedocs.io/en/latest/topics/examples.html)
+
+### Learning Resources
+- [Advanced Bash Scripting Guide](https://tldp.org/LDP/abs/html/)
+- [Ansible for DevOps](https://www.ansiblefordevops.com/)
+- [12 Factor App](https://12factor.net/) - Configuration best practices
+
+### Next Steps
+After completing this section, you should:
+- Understand various automation methods
+- Be able to write robust shell scripts
+- Know how to use Ansible for configuration management
+- Understand configuration drift and change tracking
+
+Continue to Part 7: Monitoring and Performance to learn about system monitoring and optimization.

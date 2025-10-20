@@ -1,0 +1,1139 @@
+# Appendix A: Command Reference
+
+## Essential Command Cheatsheet
+
+### System Information
+
+`hostname` {{ copy }}
+
+`hostname -f` {{ copy }}
+
+`hostnamectl` {{ copy }}
+
+`uname -a` {{ copy }}
+
+`lsb_release -a` {{ copy }}
+
+`cat /etc/os-release` {{ copy }}
+
+`lscpu` {{ copy }}
+
+`lsmem` {{ copy }}
+
+`lsblk` {{ copy }}
+
+`lspci` {{ copy }}
+
+`lsusb` {{ copy }}
+
+`dmidecode` {{ copy }}
+
+`free -h` {{ copy }}
+
+`df -h` {{ copy }}
+
+`du -sh /path` {{ copy }}
+
+`uptime` {{ copy }}
+
+`w` {{ copy }}
+
+### File and Directory Operations
+
+`cd /path/to/directory` {{ copy }}
+
+`cd -` {{ copy }}
+
+`cd ~` {{ copy }}
+
+`pwd` {{ copy }}
+
+`ls -la` {{ copy }}
+
+`ls -lah` {{ copy }}
+
+`ls -lt` {{ copy }}
+
+`ls -lS` {{ copy }}
+
+`tree` {{ copy }}
+
+`cp -r source dest` {{ copy }}
+
+`cp -p source dest` {{ copy }}
+
+`mv source dest` {{ copy }}
+
+`rm -rf directory` {{ copy }}
+
+`mkdir -p /path/to/dir` {{ copy }}
+
+`touch filename` {{ copy }}
+
+`chmod 755 file` {{ copy }}
+
+`chmod u+x file` {{ copy }}
+
+`chmod -R 644 directory` {{ copy }}
+
+`chown user:group file` {{ copy }}
+
+`chown -R user:group dir` {{ copy }}
+
+`find / -name "*.log"` {{ copy }}
+
+`find / -type f -size +100M` {{ copy }}
+
+`find / -mtime -7` {{ copy }}
+
+`find / -user username` {{ copy }}
+
+`locate filename` {{ copy }}
+
+`which command` {{ copy }}
+
+`whereis command` {{ copy }}
+
+### Process Management
+
+`ps aux` {{ copy }}
+
+`ps aux --sort=-%cpu` {{ copy }}
+
+`ps aux --sort=-%mem` {{ copy }}
+
+`ps -ef` {{ copy }}
+
+`ps -p PID` {{ copy }}
+
+`pstree` {{ copy }}
+
+`top` {{ copy }}
+
+`htop` {{ copy }}
+
+`kill PID` {{ copy }}
+
+`kill -9 PID` {{ copy }}
+
+`killall process_name` {{ copy }}
+
+`pkill pattern` {{ copy }}
+
+`pgrep pattern` {{ copy }}
+
+`nice -n 10 command` {{ copy }}
+
+`renice 10 PID` {{ copy }}
+
+`nohup command &` {{ copy }}
+
+`command &` {{ copy }}
+
+`jobs` {{ copy }}
+
+`fg %1` {{ copy }}
+
+`bg %1` {{ copy }}
+
+`disown %1` {{ copy }}
+
+### User and Group Management
+
+`adduser username` {{ copy }}
+
+`useradd username` {{ copy }}
+
+`userdel username` {{ copy }}
+
+`userdel -r username` {{ copy }}
+
+`usermod -aG group user` {{ copy }}
+
+`usermod -l newname oldname` {{ copy }}
+
+`passwd username` {{ copy }}
+
+`passwd -l username` {{ copy }}
+
+`passwd -u username` {{ copy }}
+
+`chage -l username` {{ copy }}
+
+`groupadd groupname` {{ copy }}
+
+`groupdel groupname` {{ copy }}
+
+`groupmod -n newname oldname` {{ copy }}
+
+`groups username` {{ copy }}
+
+`id username` {{ copy }}
+
+`who` {{ copy }}
+
+`whoami` {{ copy }}
+
+`last` {{ copy }}
+
+`lastlog` {{ copy }}
+
+`finger username` {{ copy }}
+
+`su - username` {{ copy }}
+
+`sudo command` {{ copy }}
+
+`sudo -u user command` {{ copy }}
+
+### Package Management
+
+`apt update` {{ copy }}
+
+`apt upgrade` {{ copy }}
+
+`apt full-upgrade` {{ copy }}
+
+`apt install package` {{ copy }}
+
+`apt remove package` {{ copy }}
+
+`apt purge package` {{ copy }}
+
+`apt autoremove` {{ copy }}
+
+`apt autoclean` {{ copy }}
+
+`apt search keyword` {{ copy }}
+
+`apt show package` {{ copy }}
+
+`apt list --installed` {{ copy }}
+
+`apt list --upgradeable` {{ copy }}
+
+`dpkg -i package.deb` {{ copy }}
+
+`dpkg -r package` {{ copy }}
+
+`dpkg -P package` {{ copy }}
+
+`dpkg -l` {{ copy }}
+
+`dpkg -L package` {{ copy }}
+
+`dpkg -S /path/to/file` {{ copy }}
+
+`dpkg --configure -a` {{ copy }}
+
+`snap list` {{ copy }}
+
+`snap find package` {{ copy }}
+
+`snap install package` {{ copy }}
+
+`snap remove package` {{ copy }}
+
+`snap refresh` {{ copy }}
+
+`snap refresh package` {{ copy }}
+
+### Network Commands
+
+`ip addr show` {{ copy }}
+
+`ip link show` {{ copy }}
+
+`ip route show` {{ copy }}
+
+`ip neigh show` {{ copy }}
+
+`ifconfig` {{ copy }}
+
+`route -n` {{ copy }}
+
+`ping -c 4 host` {{ copy }}
+
+`ping6 -c 4 host` {{ copy }}
+
+`traceroute host` {{ copy }}
+
+`tracepath host` {{ copy }}
+
+`mtr host` {{ copy }}
+
+`nc -zv host port` {{ copy }}
+
+`telnet host port` {{ copy }}
+
+`nslookup domain` {{ copy }}
+
+`dig domain` {{ copy }}
+
+`dig +short domain` {{ copy }}
+
+`host domain` {{ copy }}
+
+`systemd-resolve --status` {{ copy }}
+
+`ss -tulpn` {{ copy }}
+
+`ss -tan` {{ copy }}
+
+`netstat -tulpn` {{ copy }}
+
+`netstat -tan` {{ copy }}
+
+`lsof -i :port` {{ copy }}
+
+`iftop` {{ copy }}
+
+`nethogs` {{ copy }}
+
+`iptraf-ng` {{ copy }}
+
+`vnstat` {{ copy }}
+
+`wget URL` {{ copy }}
+
+`wget -c URL` {{ copy }}
+
+`curl -O URL` {{ copy }}
+
+`curl -L URL` {{ copy }}
+
+`rsync -av source dest` {{ copy }}
+
+`rsync -avz source dest` {{ copy }}
+
+`scp file user@host:path` {{ copy }}
+
+`sftp user@host` {{ copy }}
+
+### Service Management
+
+`systemctl status service` {{ copy }}
+
+`systemctl start service` {{ copy }}
+
+`systemctl stop service` {{ copy }}
+
+`systemctl restart service` {{ copy }}
+
+`systemctl reload service` {{ copy }}
+
+`systemctl enable service` {{ copy }}
+
+`systemctl disable service` {{ copy }}
+
+`systemctl is-active service` {{ copy }}
+
+`systemctl is-enabled service` {{ copy }}
+
+`systemctl list-units` {{ copy }}
+
+`systemctl list-units --failed` {{ copy }}
+
+`systemctl daemon-reload` {{ copy }}
+
+`systemctl get-default` {{ copy }}
+
+`systemctl set-default target` {{ copy }}
+
+`journalctl` {{ copy }}
+
+`journalctl -xe` {{ copy }}
+
+`journalctl -u service` {{ copy }}
+
+`journalctl -f` {{ copy }}
+
+`journalctl --since "1 hour ago"` {{ copy }}
+
+`journalctl --until "2024-01-01"` {{ copy }}
+
+`journalctl -p err` {{ copy }}
+
+`journalctl -n 50` {{ copy }}
+
+`journalctl --disk-usage` {{ copy }}
+
+`journalctl --vacuum-time=7d` {{ copy }}
+
+### File System Operations
+
+`fdisk -l` {{ copy }}
+
+`fdisk /dev/sda` {{ copy }}
+
+`parted /dev/sda` {{ copy }}
+
+`mkfs.ext4 /dev/sda1` {{ copy }}
+
+`mkfs.xfs /dev/sda1` {{ copy }}
+
+`mount /dev/sda1 /mnt` {{ copy }}
+
+`umount /mnt` {{ copy }}
+
+`mount -a` {{ copy }}
+
+`findmnt` {{ copy }}
+
+`blkid` {{ copy }}
+
+`fsck /dev/sda1` {{ copy }}
+
+`fsck -y /dev/sda1` {{ copy }}
+
+`e2fsck /dev/sda1` {{ copy }}
+
+`xfs_repair /dev/sda1` {{ copy }}
+
+`df -h` {{ copy }}
+
+`df -i` {{ copy }}
+
+`du -sh *` {{ copy }}
+
+`du -sh * | sort -rh` {{ copy }}
+
+`ncdu` {{ copy }}
+
+`pvdisplay` {{ copy }}
+
+`vgdisplay` {{ copy }}
+
+`lvdisplay` {{ copy }}
+
+`pvcreate /dev/sda1` {{ copy }}
+
+`vgcreate vg0 /dev/sda1` {{ copy }}
+
+`lvcreate -L 10G -n lv0 vg0` {{ copy }}
+
+`lvextend -L +5G /dev/vg0/lv0` {{ copy }}
+
+`resize2fs /dev/vg0/lv0` {{ copy }}
+
+## Useful One-liners
+
+### System Administration
+
+`find / -type f -exec du -h {} + | sort -rh | head -20` {{ copy }}
+
+`du -h / 2>/dev/null | sort -rh | head -20` {{ copy }}
+
+`find /path -type f -mtime +30 -delete` {{ copy }}
+
+`find /path -type f | wc -l` {{ copy }}
+
+`tail -f /var/log/syslog | grep --color -E "error|warning|$"` {{ copy }}
+
+`who -b | awk '{print $3, $4}'` {{ copy }}
+
+`for user in $(cut -f1 -d: /etc/passwd); do echo "=== $user ==="; crontab -l -u $user 2>/dev/null; done` {{ copy }}
+
+`openssl rand -base64 32` {{ copy }}
+
+`dd if=/dev/zero of=/tmp/test bs=1M count=1024 conv=fdatasync` {{ copy }}
+
+`dd if=/tmp/test of=/dev/null bs=1M count=1024` {{ copy }}
+
+`ps aux --sort=-%mem | head -11` {{ copy }}
+
+`ps aux --sort=-%cpu | head -11` {{ copy }}
+
+`pkill -u username` {{ copy }}
+
+`tar czf archive.tar.gz /path/to/directory` {{ copy }}
+
+`tar xzf archive.tar.gz` {{ copy }}
+
+`rsync -av --exclude='*.log' --exclude='*.tmp' source/ dest/` {{ copy }}
+
+`strace -p PID -c` {{ copy }}
+
+`ss -tlnp | grep LISTEN` {{ copy }}
+
+`watch -n 1 'df -h'` {{ copy }}
+
+`mkdir -p /path/{dir1,dir2,dir3}/{subdir1,subdir2}` {{ copy }}
+
+`for f in *.txt; do mv "$f" "${f%.txt}.bak"; done` {{ copy }}
+
+`find . -type f -name "*.txt" -exec sed -i 's/old/new/g' {} +` {{ copy }}
+
+`tree -sh /path` {{ copy }}
+
+`du -Sh /path | sort -rh | head -20` {{ copy }}
+
+### Network One-liners
+
+`ss -tupn` {{ copy }}
+
+`nethogs` {{ copy }}
+
+`lsof -i :80` {{ copy }}
+
+`echo > /dev/tcp/host/port && echo "Port open" || echo "Port closed"` {{ copy }}
+
+`wget -c URL` {{ copy }}
+
+`curl -A "Mozilla/5.0" URL` {{ copy }}
+
+`iftop -i eth0` {{ copy }}
+
+`netstat -s` {{ copy }}
+
+`ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}'` {{ copy }}
+
+`systemd-resolve --flush-caches` {{ copy }}
+
+`systemd-resolve --statistics` {{ copy }}
+
+`iptables -A INPUT -s IP_ADDRESS -j DROP` {{ copy }}
+
+`ufw allow 8080/tcp` {{ copy }}
+
+`ss -tan state established` {{ copy }}
+
+`watch -n 1 'netstat -i'` {{ copy }}
+
+`ping -M do -s 1472 host` {{ copy }}
+
+`arp -n` {{ copy }}
+
+`arp -s IP_ADDRESS MAC_ADDRESS` {{ copy }}
+
+`tcpdump -tttt -i any port 80` {{ copy }}
+
+`tcpdump -i any -A -s 0 'tcp port 80'` {{ copy }}
+
+`ip route show table all` {{ copy }}
+
+`ip route add 192.168.1.0/24 via 10.0.0.1 dev eth0` {{ copy }}
+
+### Log Analysis One-liners
+
+`awk '{print $1}' /var/log/nginx/access.log | sort | uniq -c | sort -rn | head -20` {{ copy }}
+
+`grep " 404 " /var/log/nginx/access.log` {{ copy }}
+
+`grep ERROR /var/log/syslog | awk '{print $5,$6,$7,$8,$9}' | sort | uniq -c | sort -rn | head -20` {{ copy }}
+
+`multitail /var/log/nginx/access.log /var/log/nginx/error.log` {{ copy }}
+
+`awk '/Start_Pattern/,/End_Pattern/' /var/log/syslog` {{ copy }}
+
+`awk '{print $4}' /var/log/nginx/access.log | cut -d: -f1-3 | uniq -c` {{ copy }}
+
+`grep -E "Query_time: [0-9]{2,}" /var/log/mysql/slow.log` {{ copy }}
+
+`grep "Failed password" /var/log/auth.log | awk '{print $11}' | sort | uniq -c | sort -rn` {{ copy }}
+
+`awk -F'"' '/GET/ {print $6}' /var/log/nginx/access.log | sort | uniq` {{ copy }}
+
+`awk '{sum+=$10; count++} END {print sum/count}' /var/log/nginx/access.log` {{ copy }}
+
+`journalctl --since "1 hour ago"` {{ copy }}
+
+`journalctl -u nginx --since today --output json > nginx_logs.json` {{ copy }}
+
+`journalctl -f -u nginx -u mysql` {{ copy }}
+
+`journalctl -b -p err` {{ copy }}
+
+`systemd-analyze blame` {{ copy }}
+
+## Troubleshooting Commands
+
+### System Troubleshooting
+
+`dmesg` {{ copy }}
+
+`dmesg -T` {{ copy }}
+
+`dmesg --level=err` {{ copy }}
+
+`systemctl status` {{ copy }}
+
+`systemctl --failed` {{ copy }}
+
+`systemd-analyze` {{ copy }}
+
+`systemd-analyze blame` {{ copy }}
+
+`systemd-analyze critical-chain` {{ copy }}
+
+`vmstat 1` {{ copy }}
+
+`iostat -x 1` {{ copy }}
+
+`mpstat -P ALL 1` {{ copy }}
+
+`sar -u 1 10` {{ copy }}
+
+`sar -r 1 10` {{ copy }}
+
+`sar -d 1 10` {{ copy }}
+
+`sar -n DEV 1 10` {{ copy }}
+
+`free -h` {{ copy }}
+
+`cat /proc/meminfo` {{ copy }}
+
+`slabtop` {{ copy }}
+
+`ps aux --sort=-%mem | head` {{ copy }}
+
+`pmap -x PID` {{ copy }}
+
+`valgrind --leak-check=full ./program` {{ copy }}
+
+`smartctl -a /dev/sda` {{ copy }}
+
+`smartctl -t short /dev/sda` {{ copy }}
+
+`badblocks -sv /dev/sda` {{ copy }}
+
+`hdparm -tT /dev/sda` {{ copy }}
+
+`iotop` {{ copy }}
+
+`iostat -x 1` {{ copy }}
+
+`mount -a` {{ copy }}
+
+`mount -o remount,rw /` {{ copy }}
+
+`findmnt --verify` {{ copy }}
+
+`lsof +D /path` {{ copy }}
+
+`fuser -vm /mountpoint` {{ copy }}
+
+### Network Troubleshooting
+
+`ping -c 4 8.8.8.8` {{ copy }}
+
+`ping -c 4 gateway_ip` {{ copy }}
+
+`traceroute -n 8.8.8.8` {{ copy }}
+
+`mtr --report 8.8.8.8` {{ copy }}
+
+`curl -I https://site.com` {{ copy }}
+
+`wget --spider https://site.com` {{ copy }}
+
+`nslookup domain.com` {{ copy }}
+
+`dig domain.com +trace` {{ copy }}
+
+`dig @8.8.8.8 domain.com` {{ copy }}
+
+`host -v domain.com` {{ copy }}
+
+`systemd-resolve --flush-caches` {{ copy }}
+
+`resolvectl status` {{ copy }}
+
+`nc -zv host 22` {{ copy }}
+
+`nmap -sV host` {{ copy }}
+
+`nmap -p- host` {{ copy }}
+
+`telnet host port` {{ copy }}
+
+`openssl s_client -connect host:443` {{ copy }}
+
+`iptables -L -v -n` {{ copy }}
+
+`iptables -t nat -L -v -n` {{ copy }}
+
+`ufw status verbose` {{ copy }}
+
+`ufw show raw` {{ copy }}
+
+`conntrack -L` {{ copy }}
+
+`ip link set eth0 up` {{ copy }}
+
+`ip link set eth0 down` {{ copy }}
+
+`ethtool eth0` {{ copy }}
+
+`ethtool -S eth0` {{ copy }}
+
+`mii-tool eth0` {{ copy }}
+
+### Service Troubleshooting
+
+`systemctl status service -l` {{ copy }}
+
+`systemctl show service` {{ copy }}
+
+`journalctl -u service -e` {{ copy }}
+
+`journalctl -u service -f` {{ copy }}
+
+`journalctl -u service --since "5 min ago"` {{ copy }}
+
+`systemctl cat service` {{ copy }}
+
+`systemctl edit service` {{ copy }}
+
+`systemctl list-dependencies service` {{ copy }}
+
+`strace -p PID` {{ copy }}
+
+`strace -e open -p PID` {{ copy }}
+
+`ltrace -p PID` {{ copy }}
+
+`lsof -p PID` {{ copy }}
+
+`ls -l /proc/PID/fd` {{ copy }}
+
+`cat /proc/PID/status` {{ copy }}
+
+`cat /proc/PID/limits` {{ copy }}
+
+`gdb -p PID` {{ copy }}
+
+`tail -f /var/log/app.log` {{ copy }}
+
+`less +F /var/log/app.log` {{ copy }}
+
+`grep ERROR /var/log/app.log | tail -50` {{ copy }}
+
+`zgrep ERROR /var/log/app.log.gz` {{ copy }}
+
+## Performance Analysis Tools
+
+### CPU Performance
+
+`top` {{ copy }}
+
+`htop` {{ copy }}
+
+`atop` {{ copy }}
+
+`glances` {{ copy }}
+
+`mpstat -P ALL 1` {{ copy }}
+
+`pidstat 1` {{ copy }}
+
+`perf top` {{ copy }}
+
+`perf record -g command` {{ copy }}
+
+`perf report` {{ copy }}
+
+`cpupower frequency-info` {{ copy }}
+
+`turbostat` {{ copy }}
+
+`cpufreq-info` {{ copy }}
+
+`watch -n1 "grep MHz /proc/cpuinfo"` {{ copy }}
+
+`stress --cpu 4 --timeout 60s` {{ copy }}
+
+`stress-ng --cpu 4 --cpu-method all --timeout 60s` {{ copy }}
+
+`sysbench cpu run` {{ copy }}
+
+### Memory Performance
+
+`vmstat 1` {{ copy }}
+
+`free -h -s 1` {{ copy }}
+
+`watch -n1 free -h` {{ copy }}
+
+`smem -tk` {{ copy }}
+
+`ps_mem` {{ copy }}
+
+`memtest86+` {{ copy }}
+
+`memtester 1G 5` {{ copy }}
+
+`stress --vm 2 --vm-bytes 1G --timeout 60s` {{ copy }}
+
+`vmtouch /path/to/file` {{ copy }}
+
+`linux-ftools` {{ copy }}
+
+`pcstat /path/to/file` {{ copy }}
+
+### Disk I/O Performance
+
+`iostat -x 1` {{ copy }}
+
+`iotop -o` {{ copy }}
+
+`dstat -d` {{ copy }}
+
+`atop -d` {{ copy }}
+
+`sar -d 1` {{ copy }}
+
+`hdparm -tT /dev/sda` {{ copy }}
+
+`dd if=/dev/zero of=test bs=1M count=1000 conv=fdatasync` {{ copy }}
+
+`dd if=test of=/dev/null bs=1M` {{ copy }}
+
+`fio --name=randread --ioengine=libaio --rw=randread --bs=4k --numjobs=1 --size=1G` {{ copy }}
+
+`bonnie++ -d /tmp -s 2G` {{ copy }}
+
+`blktrace -d /dev/sda` {{ copy }}
+
+`ioping -c 10 /dev/sda` {{ copy }}
+
+### Network Performance
+
+`iperf3 -s` {{ copy }}
+
+`iperf3 -c server_ip` {{ copy }}
+
+`nuttcp -S` {{ copy }}
+
+`nuttcp server_ip` {{ copy }}
+
+`speedtest-cli` {{ copy }}
+
+`ping -f -c 1000 host` {{ copy }}
+
+`hping3 -S -p 80 host` {{ copy }}
+
+`sockperf ping-pong` {{ copy }}
+
+`tcpdump -i eth0 -w capture.pcap` {{ copy }}
+
+`tshark -i eth0` {{ copy }}
+
+`ngrep -d eth0 port 80` {{ copy }}
+
+`tcpflow -i eth0` {{ copy }}
+
+`ss -s` {{ copy }}
+
+`netstat -s` {{ copy }}
+
+`conntrack -S` {{ copy }}
+
+### System-wide Performance
+
+`sar -A` {{ copy }}
+
+`dstat -af` {{ copy }}
+
+`collectl` {{ copy }}
+
+`nmon` {{ copy }}
+
+`perf stat command` {{ copy }}
+
+`perf record -a -g sleep 10` {{ copy }}
+
+`perf report` {{ copy }}
+
+`systemtap` {{ copy }}
+
+`bpftrace` {{ copy }}
+
+`sar -u` {{ copy }}
+
+`sar -r` {{ copy }}
+
+`iostat -x` {{ copy }}
+
+`sar -n DEV` {{ copy }}
+
+`vmstat 1` {{ copy }}
+
+`dmesg | grep -i error` {{ copy }}
+
+`netstat -s | grep -i error` {{ copy }}
+
+`smartctl -a /dev/sda | grep -i error` {{ copy }}
+
+## Quick Debug Commands
+
+```bash{{ copy }}
+# Quick system health check
+echo "=== System Health Check ==="
+uptime
+free -h
+df -h
+systemctl --failed
+dmesg | tail -20
+```
+
+```bash{{ copy }}
+# Quick network check
+echo "=== Network Check ==="
+ip -br addr
+ip route
+ping -c 1 8.8.8.8
+ss -tlnp
+```
+
+```bash{{ copy }}
+# Quick service check
+echo "=== Service Check ==="
+systemctl status nginx
+systemctl status mysql
+systemctl status ssh
+```
+
+```bash{{ copy }}
+# Quick security check
+echo "=== Security Check ==="
+last -20
+grep "Failed password" /var/log/auth.log | tail -10
+ss -tan state established
+ufw status
+```
+
+```bash{{ copy }}
+# Quick performance check
+echo "=== Performance Check ==="
+top -bn1 | head -20
+iostat -x 1 3
+vmstat 1 3
+```
+
+## Emergency Recovery Commands
+
+```bash{{ copy }}
+# Boot recovery - add to kernel parameters in GRUB
+init=/bin/bash
+systemd.unit=emergency.target
+systemd.unit=rescue.target
+```
+
+`mount -o remount,rw /` {{ copy }}
+
+`dpkg --configure -a` {{ copy }}
+
+`apt-get update` {{ copy }}
+
+`apt-get -f install` {{ copy }}
+
+`apt --fix-broken install` {{ copy }}
+
+`passwd root` {{ copy }}
+
+`update-initramfs -u -k all` {{ copy }}
+
+`grub-install /dev/sda` {{ copy }}
+
+`update-grub` {{ copy }}
+
+`fsck -y /dev/sda1` {{ copy }}
+
+`tar -xzpf /backup/system.tar.gz -C /` {{ copy }}
+
+`dhclient eth0` {{ copy }}
+
+`ip addr add 192.168.1.10/24 dev eth0` {{ copy }}
+
+`ip route add default via 192.168.1.1` {{ copy }}
+
+`echo "nameserver 8.8.8.8" > /etc/resolv.conf` {{ copy }}
+
+`systemctl daemon-reload` {{ copy }}
+
+`systemctl reset-failed` {{ copy }}
+
+`systemctl restart service_name` {{ copy }}
+
+`journalctl --vacuum-size=100M` {{ copy }}
+
+`apt-get clean` {{ copy }}
+
+`apt-get autoremove` {{ copy }}
+
+`find /tmp -type f -delete` {{ copy }}
+
+`find /var/log -name "*.gz" -delete` {{ copy }}
+
+## Command Shortcuts and Aliases
+
+### Useful Bash Aliases
+
+```bash{{ copy }}
+# Add to ~/.bashrc or ~/.bash_aliases
+
+# System shortcuts
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+alias cls='clear'
+alias ..='cd ..'
+alias ...='cd ../..'
+alias ....='cd ../../..'
+alias h='history'
+alias hgrep='history | grep'
+
+# Safety nets
+alias rm='rm -i'
+alias cp='cp -i'
+alias mv='mv -i'
+alias mkdir='mkdir -pv'
+
+# System info
+alias meminfo='free -h'
+alias cpuinfo='lscpu'
+alias diskinfo='df -h'
+alias myip='curl ifconfig.me'
+alias ports='ss -tulpn'
+
+# Service management
+alias sysctl='systemctl'
+alias sysstatus='systemctl status'
+alias sysrestart='systemctl restart'
+alias sysstop='systemctl stop'
+alias sysstart='systemctl start'
+
+# Package management
+alias update='sudo apt update'
+alias upgrade='sudo apt upgrade'
+alias install='sudo apt install'
+alias search='apt search'
+alias autoremove='sudo apt autoremove'
+
+# Log viewing
+alias syslog='sudo tail -f /var/log/syslog'
+alias messages='sudo tail -f /var/log/messages'
+alias auth='sudo tail -f /var/log/auth.log'
+alias nginx-access='sudo tail -f /var/log/nginx/access.log'
+alias nginx-error='sudo tail -f /var/log/nginx/error.log'
+
+# Docker shortcuts
+alias dps='docker ps'
+alias dpsa='docker ps -a'
+alias di='docker images'
+alias dex='docker exec -it'
+alias dlog='docker logs -f'
+alias dstop='docker stop $(docker ps -q)'
+alias drm='docker rm $(docker ps -aq)'
+
+# Git shortcuts
+alias gs='git status'
+alias ga='git add'
+alias gc='git commit'
+alias gp='git push'
+alias gl='git log --oneline'
+alias gd='git diff'
+
+# Process management
+alias psg='ps aux | grep'
+alias killport='kill -9 $(lsof -t -i:$1)'
+alias memhogs='ps aux --sort=-%mem | head'
+alias cpuhogs='ps aux --sort=-%cpu | head'
+
+# Network
+alias listening='ss -tlnp'
+alias established='ss -tan state established'
+alias myports='ss -tulpn | grep LISTEN'
+
+# Productivity
+alias now='date +"%Y-%m-%d %H:%M:%S"'
+alias week='date +%V'
+alias path='echo -e ${PATH//:/\\n}'
+alias reload='source ~/.bashrc'
+```
+
+### Useful Functions
+
+```bash{{ copy }}
+# Add to ~/.bashrc
+
+# Extract any archive
+extract() {
+    if [ -f $1 ]; then
+        case $1 in
+            *.tar.bz2)   tar xjf $1     ;;
+            *.tar.gz)    tar xzf $1     ;;
+            *.bz2)       bunzip2 $1     ;;
+            *.rar)       unrar e $1     ;;
+            *.gz)        gunzip $1      ;;
+            *.tar)       tar xf $1      ;;
+            *.tbz2)      tar xjf $1     ;;
+            *.tgz)       tar xzf $1     ;;
+            *.zip)       unzip $1       ;;
+            *.Z)         uncompress $1  ;;
+            *.7z)        7z x $1        ;;
+            *)           echo "'$1' cannot be extracted" ;;
+        esac
+    else
+        echo "'$1' is not a valid file"
+    fi
+}
+
+# Create directory and cd into it
+mkcd() {
+    mkdir -p "$1" && cd "$1"
+}
+
+# Backup file with timestamp
+backup() {
+    cp "$1" "$1.backup.$(date +%Y%m%d-%H%M%S)"
+}
+
+# Find process by name
+psgrep() {
+    ps aux | grep -v grep | grep -i "$1"
+}
+
+# Kill process by name
+pskill() {
+    ps aux | grep -v grep | grep -i "$1" | awk '{print $2}' | xargs kill -9
+}
+
+# Show directory size sorted
+dirsize() {
+    du -sh ${1:-*} | sort -rh
+}
+
+# Quick server info
+serverinfo() {
+    echo "Hostname: $(hostname -f)"
+    echo "IP: $(ip -4 addr | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)"
+    echo "OS: $(lsb_release -ds)"
+    echo "Kernel: $(uname -r)"
+    echo "Uptime:$(uptime -p)"
+    echo "Load: $(uptime | awk -F'load average:' '{print $2}')"
+    echo "Memory: $(free -h | awk '/^Mem:/ {print $3 " / " $2}')"
+    echo "Disk: $(df -h / | awk 'NR==2 {print $3 " / " $2}')"
+}
+
+# Monitor log file with highlighting
+logwatch() {
+    tail -f "$1" | perl -pe 's/(ERROR|WARN|CRITICAL)/\033[31m$1\033[0m/g'
+}
+
+# Test port
+testport() {
+    nc -zv "$1" "$2" 2>&1
+}
+
+# Weather (requires curl)
+weather() {
+    curl "wttr.in/${1:-}"
+}
+```
+
+---
+
+This comprehensive command reference serves as a quick lookup guide for Ubuntu system administration, covering everything from basic operations to advanced troubleshooting and performance analysis.

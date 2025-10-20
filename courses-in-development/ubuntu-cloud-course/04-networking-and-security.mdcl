@@ -1,0 +1,939 @@
+# Part 4: Networking and Security
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic Linux commands and file permissions
+- How to use systemctl to manage services
+- Basic understanding of IP addresses and ports
+- How to edit configuration files with nano or vim
+
+**Learning Resources:**
+- Ubuntu Network Configuration: https://ubuntu.com/server/docs/network-configuration
+- UFW Guide: https://help.ubuntu.com/community/UFW
+- Let's Encrypt Documentation: https://letsencrypt.org/docs/
+- SSL/TLS Best Practices: https://wiki.mozilla.org/Security/Server_Side_TLS
+
+---
+
+## Chapter 9: Network Configuration
+
+### Understanding Networking in Cloud VMs
+
+Cloud VM networking is different from traditional server networking. Your VM exists in a virtual network environment with specific characteristics.
+
+#### Key Networking Concepts
+
+**IP Addresses in Cloud VMs:**
+
+`ip addr show` {{ execute }}
+
+**Understanding the output:**
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/xvda1       20G  2.5G   17G  13% /
+```
+
+`Understanding the output:
+- lo = loopback interface (always 127.0.0.1)
+- eth0 = primary network interface
+- inet = IPv4 address
+- inet6 = IPv6 address
+- /20 = subnet mask (CIDR notation)` {{ info }}
+
+**Types of IP Addresses:**
+
+1. **Private IP**: Internal cloud network address (e.g., 172.31.23.145)
+2. **Public IP**: Internet-accessible address (e.g., 54.123.45.67)
+3. **Elastic/Floating IP**: Persistent public IP that can move between VMs
+
+`curl -s ifconfig.me` {{ execute }}
+
+`curl -s ipinfo.io/ip` {{ execute }}
+
+`curl -s ipinfo.io` {{ execute }}
+
+### Netplan Configuration (Ubuntu 18.04+)
+
+Ubuntu uses Netplan for network configuration. It's a YAML-based configuration system that generates the appropriate configuration for your chosen network backend.
+
+#### Understanding Netplan
+
+`ls -la /etc/netplan/` {{ execute }}
+
+`cat /etc/netplan/50-cloud-init.yaml` {{ execute }}
+
+#### Setting a Static IP
+
+`sudo cp /etc/netplan/50-cloud-init.yaml /etc/netplan/50-cloud-init.yaml.backup` {{ execute }}
+
+`sudo nano /etc/netplan/01-netcfg.yaml` {{ execute }}
+
+```
+# Static IP configuration example
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: no
+      addresses:
+        - 192.168.1.100/24
+      gateway4: 192.168.1.1
+      nameservers:
+        addresses: [8.8.8.8, 8.8.4.4]
+```
+
+`sudo netplan try` {{ execute }}
+
+`This command tests the configuration. It will automatically revert after 120 seconds if you don't confirm. This prevents you from locking yourself out of a remote system` {{ warning }}
+
+`sudo netplan apply` {{ execute }}
+
+`ip addr show eth0` {{ copy }}
+
+### DNS Configuration
+
+DNS (Domain Name System) translates domain names to IP addresses.
+
+#### Checking DNS Configuration
+
+`systemd-resolve --status | grep "DNS Servers"` {{ execute }}
+
+`cat /etc/resolv.conf` {{ execute }}
+
+`nslookup google.com` {{ execute }}
+
+`dig google.com` {{ execute }}
+
+`host google.com` {{ execute }}
+
+`dig google.com | grep SERVER` {{ execute }}
+
+#### Configuring DNS
+
+`sudo nano /etc/netplan/01-netcfg.yaml` {{ copy }}
+
+```
+network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      nameservers:
+        addresses:
+          - 1.1.1.1  # Cloudflare
+          - 1.0.0.1  # Cloudflare backup
+          - 8.8.8.8  # Google
+        search: [mydomain.com]
+```
+
+`sudo netplan apply` {{ execute }}
+
+`sudo nano /etc/systemd/resolved.conf` {{ copy }}
+
+`sudo systemctl restart systemd-resolved` {{ copy }}
+
+### Network Troubleshooting
+
+#### Essential Commands
+
+`ping -c 4 google.com` {{ execute }}
+
+`traceroute google.com` {{ execute }}
+
+`mtr google.com` {{ execute }}
+
+`sudo ss -tulpn` {{ execute }}
+
+`sudo netstat -tulpn` {{ execute }}
+
+`Understanding the output:
+- t = TCP
+- u = UDP
+- l = Listening
+- p = Show process
+- n = Numeric (don't resolve names)` {{ info }}
+
+`nc -zv google.com 443` {{ copy }}
+
+`sudo ufw status verbose` {{ execute }}
+
+`sudo iptables -L -n -v` {{ execute }}
+
+#### Common Network Issues and Solutions
+
+`ip addr show` {{ execute }}
+
+`ip route show` {{ execute }}
+
+`ping -c 4 192.168.1.1` {{ copy }}
+
+`nslookup google.com` {{ execute }}
+
+`sudo systemctl status nginx` {{ copy }}
+
+`sudo ss -tlnp | grep :80` {{ copy }}
+
+`sudo ufw status` {{ execute }}
+
+`sudo ufw allow 80/tcp` {{ copy }}
+
+### Port Management
+
+Understanding and managing ports is crucial for service accessibility.
+
+```bash
+# Well-known ports (0-1023)
+# 22  - SSH
+# 80  - HTTP
+# 443 - HTTPS
+# 3306 - MySQL
+# 5432 - PostgreSQL
+# 6379 - Redis
+```
+
+`cat /etc/services | grep -E "^(ssh|http|https|mysql|postgres)"` {{ execute }}
+
+`sudo nano /etc/ssh/sshd_config` {{ copy }}
+
+`sudo systemctl restart sshd` {{ copy }}
+
+`sudo ufw allow 2222/tcp` {{ copy }}
+
+`sudo ufw delete allow 22/tcp` {{ copy }}
+
+---
+
+## Chapter 10: Security Hardening
+
+### Security Assessment
+
+Before hardening your server, understand its current security posture.
+
+#### Initial Security Scan
+
+`sudo apt update` {{ execute }}
+
+`sudo apt list --upgradable` {{ execute }}
+
+`sudo ss -tulpn` {{ execute }}
+
+`ps aux` {{ execute }}
+
+`dpkg -l | grep -E '^ii' | wc -l` {{ execute }}
+
+`cat /etc/passwd | grep -E "/bin/bash|/bin/sh"` {{ execute }}
+
+`sudo grep -E "^[^#]" /etc/sudoers /etc/sudoers.d/*` {{ execute }}
+
+`find / -type f -perm -002 2>/dev/null` {{ copy }}
+
+`find / -type f \( -perm -4000 -o -perm -2000 \) 2>/dev/null` {{ copy }}
+
+### Firewall Configuration with UFW
+
+UFW (Uncomplicated Firewall) is Ubuntu's user-friendly interface to iptables.
+
+#### Basic UFW Setup
+
+`sudo ufw status verbose` {{ execute }}
+
+`sudo ufw default deny incoming` {{ execute }}
+
+`sudo ufw default allow outgoing` {{ execute }}
+
+`sudo ufw allow 22/tcp` {{ execute }}
+
+`CRITICAL: Allow SSH before enabling! If you don't, you'll lock yourself out!` {{ danger }}
+
+`sudo ufw allow 2222/tcp` {{ copy }}
+
+`sudo ufw enable` {{ execute }}
+
+`sudo ufw allow 80/tcp` {{ execute }}
+
+`sudo ufw allow 443/tcp` {{ execute }}
+
+`sudo ufw allow 3306/tcp` {{ copy }}
+
+`sudo ufw allow from 192.168.1.100 to any port 22` {{ copy }}
+
+`sudo ufw allow from 192.168.1.0/24 to any port 3306` {{ copy }}
+
+`sudo ufw limit ssh` {{ execute }}
+
+`sudo ufw delete allow 3306/tcp` {{ copy }}
+
+`sudo ufw status numbered` {{ execute }}
+
+`sudo ufw delete 5` {{ copy }}
+
+#### Advanced UFW Rules
+
+`sudo ufw allow 8000:8010/tcp` {{ copy }}
+
+`sudo ufw app list` {{ execute }}
+
+`sudo ufw app info "Nginx Full"` {{ execute }}
+
+`sudo ufw allow "Nginx Full"` {{ execute }}
+
+`sudo ufw logging on` {{ execute }}
+
+`sudo ufw logging medium` {{ execute }}
+
+`sudo tail -f /var/log/ufw.log` {{ execute }}
+
+`sudo ufw deny from 192.168.1.50` {{ copy }}
+
+`sudo ufw deny from 192.168.1.50 to any port 80 comment 'Block suspicious IP'` {{ copy }}
+
+### Fail2ban Setup
+
+Fail2ban monitors log files and bans IPs that show malicious behavior.
+
+#### Installing and Configuring Fail2ban
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install fail2ban -y` {{ execute }}
+
+`sudo cp /etc/fail2ban/jail.conf /etc/fail2ban/jail.local` {{ execute }}
+
+`sudo nano /etc/fail2ban/jail.local` {{ execute }}
+
+```ini
+# Key settings in jail.local
+
+[DEFAULT]
+# Ban time (in seconds)
+bantime = 3600  # 1 hour
+# Time window for counting failures
+findtime = 600  # 10 minutes
+# Number of failures before ban
+maxretry = 5
+
+# Email notifications
+destemail = admin@example.com
+action = %(action_mwl)s
+
+[sshd]
+enabled = true
+port = ssh
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+bantime = 7200
+
+[nginx-http-auth]
+enabled = true
+filter = nginx-http-auth
+port = http,https
+logpath = /var/log/nginx/error.log
+
+[nginx-noscript]
+enabled = true
+port = http,https
+filter = nginx-noscript
+logpath = /var/log/nginx/access.log
+maxretry = 2
+
+[nginx-badbots]
+enabled = true
+port = http,https
+filter = nginx-badbots
+logpath = /var/log/nginx/access.log
+maxretry = 2
+
+[nginx-noproxy]
+enabled = true
+port = http,https
+filter = nginx-noproxy
+logpath = /var/log/nginx/error.log
+maxretry = 2
+```
+
+`sudo systemctl restart fail2ban` {{ execute }}
+
+`sudo systemctl enable fail2ban` {{ execute }}
+
+`sudo fail2ban-client status` {{ execute }}
+
+`sudo fail2ban-client status sshd` {{ execute }}
+
+`sudo fail2ban-client unban 192.168.1.100` {{ copy }}
+
+`sudo fail2ban-client set sshd banip 192.168.1.100` {{ copy }}
+
+`sudo tail -f /var/log/fail2ban.log` {{ execute }}
+
+### AppArmor Configuration
+
+AppArmor provides Mandatory Access Control (MAC) to restrict programs' capabilities.
+
+`sudo aa-status` {{ execute }}
+
+`ls /etc/apparmor.d/` {{ execute }}
+
+`sudo aa-enforce /etc/apparmor.d/usr.sbin.nginx` {{ copy }}
+
+`sudo aa-complain /etc/apparmor.d/usr.sbin.nginx` {{ copy }}
+
+`sudo systemctl reload apparmor` {{ execute }}
+
+`sudo journalctl -xe | grep apparmor` {{ execute }}
+
+### System Auditing with auditd
+
+Auditd tracks security-relevant events on your system.
+
+`sudo apt install auditd audispd-plugins -y` {{ execute }}
+
+`sudo systemctl status auditd` {{ execute }}
+
+`sudo nano /etc/audit/rules.d/audit.rules` {{ execute }}
+
+```bash
+# Example audit rules
+
+# Monitor password file changes
+-w /etc/passwd -p wa -k passwd_changes
+-w /etc/shadow -p wa -k shadow_changes
+-w /etc/group -p wa -k group_changes
+
+# Monitor sudo usage
+-w /usr/bin/sudo -p x -k sudo_usage
+
+# Monitor SSH configuration
+-w /etc/ssh/sshd_config -p wa -k sshd_config
+
+# Monitor system calls
+-a always,exit -F arch=b64 -S execve -F uid=0 -k root_commands
+
+# File deletion by users
+-a always,exit -F arch=b64 -S unlink -S unlinkat -S rename -S renameat -F auid>=1000 -F auid!=4294967295 -k delete
+```
+
+`sudo augenrules --load` {{ execute }}
+
+`sudo ausearch -k passwd_changes` {{ copy }}
+
+`sudo ausearch -k sudo_usage --start today` {{ copy }}
+
+`sudo aureport --summary` {{ execute }}
+
+`sudo aureport --auth` {{ execute }}
+
+`sudo aureport --failed` {{ execute }}
+
+### File Integrity Monitoring
+
+Monitor critical files for unauthorized changes.
+
+`sudo apt install aide aide-common -y` {{ execute }}
+
+`sudo aideinit` {{ execute }}
+
+`This creates a baseline of your system and may take several minutes to complete` {{ info }}
+
+`sudo nano /etc/aide/aide.conf` {{ execute }}
+
+`sudo aide --check` {{ execute }}
+
+`sudo aide --update` {{ execute }}
+
+`sudo mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db` {{ execute }}
+
+`sudo nano /etc/cron.daily/aide` {{ execute }}
+
+```bash
+#!/bin/bash
+# AIDE daily check script
+/usr/bin/aide --check | mail -s "AIDE Report $(hostname)" admin@example.com
+```
+
+`sudo chmod +x /etc/cron.daily/aide` {{ execute }}
+
+### Security Updates Automation
+
+Keep your system automatically updated with security patches.
+
+`sudo apt install unattended-upgrades apt-listchanges -y` {{ execute }}
+
+`sudo dpkg-reconfigure unattended-upgrades` {{ execute }}
+
+`sudo nano /etc/apt/apt.conf.d/50unattended-upgrades` {{ execute }}
+
+```conf
+// Automatically upgrade packages from these origins
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Automatically reboot if required
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+
+// Send email notifications
+Unattended-Upgrade::Mail "admin@example.com";
+Unattended-Upgrade::MailReport "on-change";
+
+// Remove unused dependencies
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+```
+
+`sudo unattended-upgrades --dry-run --debug` {{ execute }}
+
+`sudo tail -f /var/log/unattended-upgrades/unattended-upgrades.log` {{ execute }}
+
+---
+
+## Chapter 11: SSL/TLS and Certificates
+
+### Understanding Certificates
+
+SSL/TLS certificates enable encrypted HTTPS connections. Let's understand how they work.
+
+#### Certificate Concepts
+
+**What is SSL/TLS?**
+- **SSL**: Secure Sockets Layer (deprecated)
+- **TLS**: Transport Layer Security (current standard)
+- Provides encryption, authentication, and integrity
+
+**Certificate Components:**
+1. **Public Key**: Shared with everyone
+2. **Private Key**: Keep secret on your server
+3. **Certificate**: Contains public key + identity info
+4. **Certificate Authority (CA)**: Trusted entity that signs certificates
+
+`sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+  -keyout /etc/ssl/private/test.key \
+  -out /etc/ssl/certs/test.crt \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=example.com"` {{ copy }}
+
+`Self-signed certificates are for testing only! Browsers will show security warnings. Use Let's Encrypt for production` {{ warning }}
+
+`openssl x509 -in /etc/ssl/certs/test.crt -text -noout` {{ copy }}
+
+`openssl x509 -in /etc/ssl/certs/test.crt -noout -dates` {{ copy }}
+
+### Let's Encrypt Automation
+
+Let's Encrypt provides free, automated SSL certificates.
+
+#### Installing Certbot
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install snapd -y` {{ execute }}
+
+`sudo snap install --classic certbot` {{ execute }}
+
+`sudo ln -s /snap/bin/certbot /usr/bin/certbot` {{ execute }}
+
+`sudo apt install certbot python3-certbot-nginx -y` {{ copy }}
+
+`sudo apt install certbot python3-certbot-apache -y` {{ copy }}
+
+#### Obtaining Certificates
+
+`sudo certbot --nginx -d example.com -d www.example.com` {{ copy }}
+
+`sudo certbot --apache -d example.com -d www.example.com` {{ copy }}
+
+`sudo certbot certonly --standalone -d example.com` {{ copy }}
+
+`sudo certbot certonly --webroot -w /var/www/html -d example.com` {{ copy }}
+
+`sudo certbot certonly --manual --preferred-challenges dns -d "*.example.com"` {{ copy }}
+
+#### Interactive Certificate Setup
+
+`sudo certbot --nginx` {{ copy }}
+
+`You'll be prompted for:
+1. Email address (for renewal notifications)
+2. Terms of service agreement
+3. Whether to share email with EFF
+4. Which domains to secure
+5. Whether to redirect HTTP to HTTPS` {{ info }}
+
+### Certificate Management
+
+#### Viewing Certificates
+
+`sudo certbot certificates` {{ execute }}
+
+`sudo openssl x509 -in /etc/letsencrypt/live/example.com/cert.pem -text -noout` {{ copy }}
+
+`sudo openssl verify -CAfile /etc/letsencrypt/live/example.com/chain.pem \
+  /etc/letsencrypt/live/example.com/cert.pem` {{ copy }}
+
+#### Testing Configuration
+
+`sudo certbot renew --dry-run` {{ execute }}
+
+`sudo certbot renew --cert-name example.com --dry-run` {{ copy }}
+
+`sudo certbot renew --force-renewal` {{ copy }}
+
+`Use https://www.ssllabs.com/ssltest/ to check your SSL configuration online` {{ tip }}
+
+### SSL/TLS Configuration
+
+#### Nginx SSL Configuration
+
+`sudo openssl dhparam -out /etc/nginx/dhparam.pem 2048` {{ execute }}
+
+`This may take 5-10 minutes to generate strong Diffie-Hellman parameters` {{ info }}
+
+`sudo nano /etc/nginx/sites-available/example.com` {{ copy }}
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com www.example.com;
+
+    # Redirect all HTTP to HTTPS
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name example.com www.example.com;
+
+    # SSL Certificate files
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    # SSL Security Settings
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+
+    # SSL Optimization
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+
+    # Diffie-Hellman parameters
+    ssl_dhparam /etc/nginx/dhparam.pem;
+
+    # OCSP Stapling
+    ssl_stapling on;
+    ssl_stapling_verify on;
+    ssl_trusted_certificate /etc/letsencrypt/live/example.com/chain.pem;
+
+    # Security Headers
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Your site configuration
+    root /var/www/example.com;
+    index index.html index.htm;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+```
+
+`sudo nginx -t` {{ execute }}
+
+`sudo systemctl reload nginx` {{ execute }}
+
+#### Apache SSL Configuration
+
+`sudo a2enmod ssl` {{ execute }}
+
+`sudo a2enmod headers` {{ execute }}
+
+`sudo nano /etc/apache2/sites-available/example.com-ssl.conf` {{ copy }}
+
+```apache
+<VirtualHost *:80>
+    ServerName example.com
+    ServerAlias www.example.com
+    Redirect permanent / https://example.com/
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName example.com
+    ServerAlias www.example.com
+    DocumentRoot /var/www/example.com
+
+    # Enable SSL
+    SSLEngine on
+    SSLCertificateFile /etc/letsencrypt/live/example.com/cert.pem
+    SSLCertificateKeyFile /etc/letsencrypt/live/example.com/privkey.pem
+    SSLCertificateChainFile /etc/letsencrypt/live/example.com/chain.pem
+
+    # Security Settings
+    SSLProtocol -all +TLSv1.2 +TLSv1.3
+    SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
+    SSLHonorCipherOrder off
+
+    # Security Headers
+    Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Content-Type-Options "nosniff"
+
+    # OCSP Stapling
+    SSLUseStapling on
+    SSLStaplingCache "shmcb:logs/stapling-cache(150000)"
+
+    <Directory /var/www/example.com>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+</VirtualHost>
+```
+
+`sudo a2ensite example.com-ssl` {{ copy }}
+
+`sudo apache2ctl configtest` {{ execute }}
+
+`sudo systemctl reload apache2` {{ execute }}
+
+### Certificate Renewal
+
+#### Automatic Renewal Setup
+
+`sudo systemctl status snap.certbot.renew.timer` {{ execute }}
+
+`sudo systemctl status certbot.timer` {{ copy }}
+
+`systemctl list-timers | grep certbot` {{ execute }}
+
+`sudo crontab -e` {{ copy }}
+
+#### Renewal Hooks
+
+`sudo mkdir -p /etc/letsencrypt/renewal-hooks/deploy/` {{ execute }}
+
+`sudo nano /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+# Reload services after successful renewal
+
+# Reload Nginx if it's running
+if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+    echo "Nginx reloaded"
+fi
+
+# Reload Apache if it's running
+if systemctl is-active --quiet apache2; then
+    systemctl reload apache2
+    echo "Apache reloaded"
+fi
+
+# Restart other services that use the certificate
+# systemctl restart postfix
+# systemctl restart dovecot
+
+# Send notification
+echo "Certificates renewed on $(hostname)" | mail -s "Certificate Renewal" admin@example.com
+```
+
+`sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh` {{ execute }}
+
+`sudo certbot renew --dry-run` {{ execute }}
+
+### Troubleshooting SSL Issues
+
+#### Common Problems and Solutions
+
+`echo | openssl s_client -servername example.com -connect example.com:443 2>/dev/null | openssl x509 -noout -dates` {{ copy }}
+
+`sudo certbot renew --force-renewal` {{ copy }}
+
+`grep -r "http://" /var/www/html/` {{ copy }}
+
+`openssl s_client -connect example.com:443 -servername example.com` {{ copy }}
+
+`openssl s_client -debug -connect example.com:443` {{ copy }}
+
+`openssl s_client -connect example.com:443 -servername example.com -showcerts` {{ copy }}
+
+`nmap --script ssl-enum-ciphers -p 443 example.com` {{ copy }}
+
+`Use these online testing tools:
+- https://www.ssllabs.com/ssltest/
+- https://www.sslshopper.com/ssl-checker.html
+- https://observatory.mozilla.org/` {{ tip }}
+
+#### Certificate Backup
+
+`sudo tar -czf /backup/letsencrypt-$(date +%Y%m%d).tar.gz /etc/letsencrypt/` {{ copy }}
+
+`sudo nano /usr/local/bin/backup-certificates.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+# Certificate backup script
+
+BACKUP_DIR="/backup/certificates"
+DATE=$(date +%Y%m%d-%H%M%S)
+
+# Create backup directory
+mkdir -p "$BACKUP_DIR"
+
+# Backup Let's Encrypt
+tar -czf "$BACKUP_DIR/letsencrypt-$DATE.tar.gz" /etc/letsencrypt/
+
+# Backup Nginx SSL configurations
+tar -czf "$BACKUP_DIR/nginx-ssl-$DATE.tar.gz" /etc/nginx/sites-available/ /etc/nginx/snippets/
+
+# Keep only last 30 days of backups
+find "$BACKUP_DIR" -name "*.tar.gz" -mtime +30 -delete
+
+echo "Certificate backup completed: $DATE"
+```
+
+`sudo chmod +x /usr/local/bin/backup-certificates.sh` {{ execute }}
+
+`sudo crontab -e` {{ copy }}
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Network Configuration
+1. Display all network interfaces and their IP addresses
+2. Set up a static IP address using Netplan
+3. Configure custom DNS servers
+4. Test connectivity to various services
+5. Create a script to monitor network connectivity
+
+### Exercise 2: Firewall Setup
+1. Configure UFW with default deny incoming policy
+2. Allow only necessary services (SSH, HTTP, HTTPS)
+3. Set up rate limiting for SSH
+4. Create rules for a database that should only be accessible from specific IPs
+5. Monitor and analyze firewall logs
+
+### Exercise 3: Security Hardening
+1. Install and configure Fail2ban for SSH and web services
+2. Set up auditd to monitor sensitive files
+3. Configure automatic security updates
+4. Perform a security assessment of your system
+5. Create a hardening checklist and implement it
+
+### Exercise 4: SSL Certificate Management
+1. Obtain a Let's Encrypt certificate for a domain
+2. Configure Nginx/Apache with strong SSL settings
+3. Set up automatic renewal
+4. Test SSL configuration using online tools
+5. Create a monitoring script for certificate expiration
+
+---
+
+## Quick Reference
+
+### Essential Network Commands
+`ip addr show` {{ execute }}
+
+`ip route show` {{ execute }}
+
+`ss -tulpn` {{ execute }}
+
+`netstat -tulpn` {{ execute }}
+
+`nslookup domain.com` {{ execute }}
+
+`dig domain.com` {{ execute }}
+
+`ping -c 4 google.com` {{ execute }}
+
+`traceroute google.com` {{ execute }}
+
+`mtr google.com` {{ execute }}
+
+`nc -zv host port` {{ copy }}
+
+`curl -I https://example.com` {{ copy }}
+
+### UFW Commands
+`sudo ufw status verbose` {{ execute }}
+
+`sudo ufw enable` {{ execute }}
+
+`sudo ufw allow 22/tcp` {{ execute }}
+
+`sudo ufw allow from IP` {{ copy }}
+
+`sudo ufw deny from IP` {{ copy }}
+
+`sudo ufw limit ssh` {{ execute }}
+
+`sudo ufw delete allow 80` {{ copy }}
+
+`sudo ufw reset` {{ copy }}
+
+### Security Commands
+`sudo fail2ban-client status` {{ execute }}
+
+`sudo aa-status` {{ execute }}
+
+`sudo ausearch -k keyword` {{ copy }}
+
+`sudo aide --check` {{ execute }}
+
+`sudo certbot renew` {{ execute }}
+
+`sudo nginx -t` {{ execute }}
+
+`sudo apache2ctl configtest` {{ execute }}
+
+### SSL/TLS Commands
+`sudo certbot --nginx` {{ copy }}
+
+`sudo certbot renew --dry-run` {{ execute }}
+
+`sudo certbot certificates` {{ execute }}
+
+`openssl x509 -in cert.pem -text` {{ copy }}
+
+`openssl s_client -connect host:443` {{ copy }}
+
+---
+
+## Additional Resources
+
+### Documentation
+- [Ubuntu Server Guide - Networking](https://ubuntu.com/server/docs/network-configuration)
+- [UFW Documentation](https://help.ubuntu.com/community/UFW)
+- [Let's Encrypt Documentation](https://letsencrypt.org/docs/)
+- [OWASP TLS Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/Transport_Layer_Protection_Cheat_Sheet.html)
+
+### Security Resources
+- [CIS Ubuntu Benchmarks](https://www.cisecurity.org/cis-benchmarks/)
+- [Linux Security Modules](https://www.kernel.org/doc/html/latest/admin-guide/LSM/index.html)
+- [Fail2ban Filters](https://github.com/fail2ban/fail2ban)
+- [Mozilla SSL Configuration Generator](https://ssl-config.mozilla.org/)
+
+### Tools
+- [SSL Labs Server Test](https://www.ssllabs.com/ssltest/)
+- [Security Headers Scanner](https://securityheaders.com/)
+- [Mozilla Observatory](https://observatory.mozilla.org/)
+- [Shodan](https://www.shodan.io/) - Search engine for Internet-connected devices
+
+### Next Steps
+After completing this section, you should:
+- Have a properly configured network setup
+- Understand and implement security best practices
+- Be able to obtain and manage SSL certificates
+- Know how to monitor and audit system security
+
+Continue to Part 5: Package and Software Management to learn about managing software on your Ubuntu server.

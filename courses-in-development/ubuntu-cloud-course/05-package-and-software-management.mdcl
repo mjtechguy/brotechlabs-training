@@ -1,0 +1,690 @@
+# Part 5: Package and Software Management
+
+## Prerequisites
+
+Before starting this section, you should understand:
+- Basic command line navigation
+- How to use sudo for administrative tasks
+- Basic understanding of software and dependencies
+- How to edit text files with nano or vim
+
+**Learning Resources:**
+- [Ubuntu Package Management Guide](https://help.ubuntu.com/community/AptGet/Howto)
+- [Snap Documentation](https://snapcraft.io/docs)
+- [Debian Package Management](https://www.debian.org/doc/manuals/debian-faq/pkg-basics.en.html)
+- [Environment Variables Guide](https://help.ubuntu.com/community/EnvironmentVariables)
+
+---
+
+## Chapter 12: APT Package Management
+
+### Understanding Package Management
+
+Package management is how you install, update, and remove software on Ubuntu. APT (Advanced Package Tool) is Ubuntu's primary package management system.
+
+#### What are Packages?
+
+A **package** is a compressed file containing:
+- Pre-compiled software
+- Configuration files
+- Dependencies information
+- Installation/removal scripts
+- Documentation
+
+Think of packages like smartphone apps - they contain everything needed to run, and the package manager (like an app store) handles installation and updates.
+
+`apt show nginx` {{ execute }}
+
+### Repository Management
+
+Repositories are servers that host packages. Ubuntu uses multiple repositories for different types of software.
+
+#### Understanding Repository Types
+
+`cat /etc/apt/sources.list` {{ execute }}
+
+`Typical Ubuntu repositories: main (officially supported), universe (community-maintained), restricted (proprietary drivers), multiverse (legal restrictions)` {{ info }}
+
+#### Adding Repositories
+
+`sudo add-apt-repository ppa:ondrej/php` {{ copy }}
+
+`sudo apt update` {{ execute }}
+
+`Always run apt update after adding a repository to refresh the package index` {{ tip }}
+
+`curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg` {{ copy }}
+
+`echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list` {{ copy }}
+
+`sudo apt update` {{ execute }}
+
+`sudo add-apt-repository --remove ppa:ondrej/php` {{ copy }}
+
+#### Managing Repository Priorities
+
+`sudo apt install software-properties-common` {{ execute }}
+
+`apt policy` {{ execute }}
+
+`apt policy nginx` {{ copy }}
+
+`sudo nano /etc/apt/preferences.d/custom-repo` {{ copy }}
+
+### Package Installation and Removal
+
+#### Installing Packages
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install nginx` {{ copy }}
+
+`sudo apt install nginx mysql-server php-fpm` {{ copy }}
+
+`sudo apt install nginx=1.18.0-0ubuntu1` {{ copy }}
+
+`sudo apt install -y htop` {{ copy }}
+
+`The -y flag automatically answers 'yes' to prompts` {{ info }}
+
+`sudo apt install -s nginx` {{ copy }}
+
+`sudo dpkg -i package.deb` {{ copy }}
+
+`sudo apt install -f` {{ execute }}
+
+`Use apt install -f to fix broken dependencies after manual .deb installation` {{ tip }}
+
+#### Removing Packages
+
+`sudo apt remove nginx` {{ copy }}
+
+`sudo apt purge nginx` {{ copy }}
+
+`sudo apt autoremove` {{ execute }}
+
+`sudo apt purge --auto-remove nginx` {{ copy }}
+
+`sudo apt clean` {{ execute }}
+
+`sudo apt autoclean` {{ execute }}
+
+`autoremove removes packages that were automatically installed and are no longer needed` {{ info }}
+
+#### Updating and Upgrading
+
+`sudo apt update` {{ execute }}
+
+`apt list --upgradable` {{ execute }}
+
+`sudo apt upgrade` {{ execute }}
+
+`sudo apt full-upgrade` {{ copy }}
+
+`sudo apt install --only-upgrade nginx` {{ copy }}
+
+`sudo apt-mark hold nginx` {{ copy }}
+
+`sudo apt-mark unhold nginx` {{ copy }}
+
+`apt-mark showhold` {{ execute }}
+
+`Holding a package prevents it from being upgraded - useful for maintaining specific versions` {{ warning }}
+
+### Dependency Resolution
+
+Understanding how APT handles dependencies is crucial for troubleshooting.
+
+#### Working with Dependencies
+
+`apt depends nginx` {{ copy }}
+
+`apt rdepends nginx` {{ copy }}
+
+`sudo apt install -f` {{ execute }}
+
+`sudo dpkg --configure -a` {{ execute }}
+
+`sudo apt check` {{ execute }}
+
+`sudo dpkg-reconfigure package-name` {{ copy }}
+
+#### Resolving Dependency Conflicts
+
+`sudo apt update` {{ execute }}
+
+`sudo apt install -f` {{ execute }}
+
+`sudo apt install aptitude` {{ execute }}
+
+`sudo aptitude install package-name` {{ copy }}
+
+`aptitude has better dependency resolution algorithms than apt for complex conflicts` {{ tip }}
+
+`dpkg --get-selections | grep hold` {{ execute }}
+
+`sudo dpkg --remove --force-remove-reinstreq package-name` {{ copy }}
+
+### Package Pinning
+
+Package pinning allows you to control which versions of packages are installed from which repositories.
+
+`sudo nano /etc/apt/preferences.d/nginx-pinning` {{ copy }}
+
+`apt-cache policy nginx` {{ copy }}
+
+`apt-get install -s nginx` {{ copy }}
+
+### Automatic Updates
+
+Configure automatic security updates to keep your system secure.
+
+#### Configuring Unattended Upgrades
+
+`sudo apt install unattended-upgrades` {{ execute }}
+
+`sudo dpkg-reconfigure --priority=low unattended-upgrades` {{ execute }}
+
+`sudo nano /etc/apt/apt.conf.d/50unattended-upgrades` {{ copy }}
+
+`sudo nano /etc/apt/apt.conf.d/20auto-upgrades` {{ copy }}
+
+`sudo unattended-upgrades --dry-run --debug` {{ execute }}
+
+`sudo tail -f /var/log/unattended-upgrades/unattended-upgrades.log` {{ execute }}
+
+`Unattended upgrades only install security updates by default - your system won't break from automatic updates` {{ info }}
+
+### Building from Source
+
+Sometimes you need to compile software from source code.
+
+#### Prerequisites for Building
+
+`sudo apt install build-essential` {{ execute }}
+
+`sudo apt install automake autoconf libtool pkg-config libssl-dev libcurl4-openssl-dev libxml2-dev libsqlite3-dev cmake git` {{ copy }}
+
+`sudo apt build-dep nginx` {{ copy }}
+
+`apt build-dep installs all dependencies needed to compile a package from source` {{ tip }}
+
+#### Compilation Process
+
+`cd /tmp` {{ execute }}
+
+`wget http://nginx.org/download/nginx-1.21.0.tar.gz` {{ copy }}
+
+`tar -xzvf nginx-1.21.0.tar.gz` {{ copy }}
+
+`cd nginx-1.21.0` {{ copy }}
+
+`./configure --prefix=/usr/local/nginx --with-http_ssl_module --with-http_v2_module --with-http_realip_module` {{ copy }}
+
+`make -j$(nproc)` {{ copy }}
+
+`The -j$(nproc) flag uses all CPU cores for faster compilation` {{ info }}
+
+`make test` {{ copy }}
+
+`sudo make install` {{ copy }}
+
+`sudo nano /etc/systemd/system/nginx.service` {{ copy }}
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable nginx` {{ execute }}
+
+`sudo systemctl start nginx` {{ execute }}
+
+#### Using Checkinstall
+
+Checkinstall creates a package from compiled source, making it easier to manage.
+
+`sudo apt install checkinstall` {{ execute }}
+
+`sudo checkinstall` {{ execute }}
+
+`Checkinstall creates a .deb package that can be managed with apt, making it easy to uninstall later` {{ tip }}
+
+`apt list --installed | grep nginx` {{ execute }}
+
+`sudo apt remove nginx` {{ copy }}
+
+### Snap Packages
+
+Snap is a universal package format that works across different Linux distributions.
+
+#### Understanding Snaps
+
+Snaps are:
+- Self-contained with all dependencies
+- Automatically updated
+- Sandboxed for security
+- Version-controlled with rollback capability
+
+`sudo apt install snapd` {{ execute }}
+
+`snap version` {{ execute }}
+
+`snap list` {{ execute }}
+
+`snap search vscode` {{ copy }}
+
+`snap info code` {{ copy }}
+
+#### Managing Snaps
+
+`sudo snap install code --classic` {{ copy }}
+
+`The --classic flag disables confinement for apps that need full system access` {{ info }}
+
+`sudo snap install node --channel=14/stable --classic` {{ copy }}
+
+`sudo snap refresh` {{ execute }}
+
+`sudo snap refresh code` {{ copy }}
+
+`sudo snap revert code` {{ copy }}
+
+`sudo snap remove code` {{ copy }}
+
+`snap list --all code` {{ copy }}
+
+`sudo snap switch code --channel=stable` {{ copy }}
+
+`sudo snap hold code` {{ copy }}
+
+`snap connections code` {{ copy }}
+
+`sudo snap connect code:removable-media` {{ copy }}
+
+`Snaps are isolated from the system by default. Use snap connect to grant additional permissions` {{ warning }}
+
+#### Snap Configuration
+
+`snap services` {{ execute }}
+
+`sudo snap start service-name` {{ copy }}
+
+`sudo snap stop service-name` {{ copy }}
+
+`sudo snap set nextcloud ports.http=81` {{ copy }}
+
+`sudo snap get nextcloud` {{ copy }}
+
+`snap changes` {{ execute }}
+
+`sudo snap abort 123` {{ copy }}
+
+`snap download code` {{ copy }}
+
+`sudo snap install ./code_*.snap --dangerous` {{ copy }}
+
+---
+
+## Chapter 13: Software Configuration
+
+### Application Deployment
+
+Deploying applications properly ensures they run reliably and securely.
+
+#### Deployment Best Practices
+
+`sudo useradd -r -m -d /var/www/app -s /bin/bash appuser` {{ execute }}
+
+`sudo mkdir -p /var/www/app/{releases,shared,current}` {{ execute }}
+
+`sudo chown -R appuser:appuser /var/www/app` {{ execute }}
+
+`sudo -u appuser git clone https://github.com/user/app.git /var/www/app/releases/v1.0.0` {{ copy }}
+
+`sudo -u appuser mkdir -p /var/www/app/shared/{config,log,tmp}` {{ execute }}
+
+`sudo -u appuser ln -sfn /var/www/app/releases/v1.0.0 /var/www/app/current` {{ execute }}
+
+`The 'current' symlink allows zero-downtime deployments by switching to new releases atomically` {{ tip }}
+
+#### Zero-Downtime Deployment
+
+`sudo nano /usr/local/bin/deploy-app.sh` {{ copy }}
+
+`sudo chmod +x /usr/local/bin/deploy-app.sh` {{ execute }}
+
+### Environment Variables
+
+Environment variables configure application behavior without changing code.
+
+#### System-Wide Environment Variables
+
+`env` {{ execute }}
+
+`printenv` {{ execute }}
+
+`echo $PATH` {{ execute }}
+
+`printenv HOME` {{ copy }}
+
+`sudo nano /etc/environment` {{ copy }}
+
+`sudo nano /etc/profile.d/custom-env.sh` {{ copy }}
+
+`Environment variables set in /etc/environment are available to all users and processes` {{ info }}
+
+#### User-Specific Environment Variables
+
+`nano ~/.bashrc` {{ execute }}
+
+`source ~/.bashrc` {{ execute }}
+
+`export TEMP_VAR="temporary value"` {{ copy }}
+
+`MY_VAR="value" command` {{ copy }}
+
+`NODE_ENV="production" node app.js` {{ copy }}
+
+`Variables set with export are available to child processes. Without export, they're only in the current shell` {{ tip }}
+
+#### Application-Specific Environment
+
+`sudo nano /etc/systemd/system/myapp.service` {{ copy }}
+
+`sudo nano /etc/myapp/env` {{ copy }}
+
+`nano /var/www/app/.env` {{ copy }}
+
+`chmod 600 /var/www/app/.env` {{ copy }}
+
+`chown appuser:appuser /var/www/app/.env` {{ copy }}
+
+`.env files should never be committed to version control - add them to .gitignore` {{ danger }}
+
+### Configuration Management
+
+Managing configuration files effectively is crucial for maintainability.
+
+#### Configuration Structure
+
+`sudo mkdir -p /etc/myapp/{conf.d,ssl,secrets}` {{ execute }}
+
+`sudo nano /etc/myapp/config.yaml` {{ copy }}
+
+`sudo nano /etc/myapp/conf.d/production.yaml` {{ copy }}
+
+#### Configuration Templates
+
+Using templates allows dynamic configuration generation.
+
+`sudo apt install gettext-base` {{ execute }}
+
+`sudo nano /etc/myapp/config.template` {{ copy }}
+
+`export PORT=80` {{ execute }}
+
+`export DOMAIN=example.com` {{ execute }}
+
+`export BACKEND_HOST=localhost` {{ execute }}
+
+`export BACKEND_PORT=3000` {{ execute }}
+
+`envsubst < /etc/myapp/config.template > /etc/nginx/sites-available/myapp` {{ copy }}
+
+`envsubst replaces ${VARIABLE} placeholders with their values from the environment` {{ info }}
+
+`sudo nano /usr/local/bin/generate-config.sh` {{ copy }}
+
+### Version Control for Configs
+
+Track configuration changes using Git.
+
+`cd /etc/myapp` {{ execute }}
+
+`sudo git init` {{ execute }}
+
+`sudo git config user.email "admin@example.com"` {{ execute }}
+
+`sudo git config user.name "System Admin"` {{ execute }}
+
+`sudo nano .gitignore` {{ copy }}
+
+`sudo git add .` {{ execute }}
+
+`sudo git commit -m "Initial configuration"` {{ execute }}
+
+`Using git for /etc makes it easy to track who changed what and when` {{ tip }}
+
+`sudo nano /usr/local/bin/backup-configs.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+### Application Secrets Management
+
+Properly managing secrets is critical for security.
+
+#### Using Linux Keyrings
+
+`sudo apt install gnupg2 pass` {{ execute }}
+
+`gpg --gen-key` {{ execute }}
+
+`pass init your-email@example.com` {{ copy }}
+
+`pass insert myapp/db_password` {{ copy }}
+
+`pass insert myapp/api_key` {{ copy }}
+
+`DB_PASS=$(pass myapp/db_password)` {{ copy }}
+
+`pass encrypts secrets with GPG and stores them in ~/.password-store` {{ info }}
+
+#### Using Encrypted Files
+
+`sudo nano /etc/myapp/secrets.conf` {{ copy }}
+
+`sudo gpg --symmetric --cipher-algo AES256 /etc/myapp/secrets.conf` {{ copy }}
+
+`sudo shred -u /etc/myapp/secrets.conf` {{ copy }}
+
+`shred securely deletes files by overwriting them multiple times` {{ tip }}
+
+`sudo gpg --decrypt /etc/myapp/secrets.conf.gpg` {{ copy }}
+
+`sudo nano /usr/local/bin/start-app.sh` {{ copy }}
+
+#### Using HashiCorp Vault (Advanced)
+
+`curl -fsSL https://apt.releases.hashicorp.com/gpg | sudo apt-key add -` {{ copy }}
+
+`sudo apt-add-repository "deb [arch=amd64] https://apt.releases.hashicorp.com $(lsb_release -cs) main"` {{ copy }}
+
+`sudo apt update && sudo apt install vault` {{ copy }}
+
+`vault server -dev` {{ copy }}
+
+`export VAULT_ADDR='http://127.0.0.1:8200'` {{ copy }}
+
+`export VAULT_TOKEN='your-root-token'` {{ copy }}
+
+`vault kv put secret/myapp/config db_password=secret123 api_key=abc456` {{ copy }}
+
+`vault kv get secret/myapp/config` {{ copy }}
+
+`Vault is enterprise-grade secrets management - use for production environments with many secrets` {{ info }}
+
+`sudo nano /usr/local/bin/get-secrets.sh` {{ copy }}
+
+### Service Configuration
+
+Configuring services properly ensures reliability and maintainability.
+
+#### Systemd Service Configuration
+
+`sudo nano /etc/systemd/system/myapp.service` {{ copy }}
+
+`sudo systemctl daemon-reload` {{ execute }}
+
+`sudo systemctl enable myapp` {{ execute }}
+
+`sudo systemctl start myapp` {{ execute }}
+
+`sudo systemctl status myapp` {{ execute }}
+
+`journalctl -u myapp -f` {{ execute }}
+
+`systemd services automatically restart on failure when Restart=always is configured` {{ tip }}
+
+#### Service Dependencies
+
+`sudo mkdir -p /etc/systemd/system/myapp.service.d` {{ execute }}
+
+`sudo nano /etc/systemd/system/myapp.service.d/dependencies.conf` {{ copy }}
+
+#### Service Monitoring
+
+`sudo nano /usr/local/bin/check-myapp.sh` {{ copy }}
+
+`sudo crontab -e` {{ execute }}
+
+---
+
+## Practice Exercises
+
+### Exercise 1: Package Management
+1. Add a new repository (e.g., Docker or PostgreSQL)
+2. Install a package from the new repository
+3. Pin the package to a specific version
+4. Configure automatic security updates
+5. Create a script to audit installed packages
+
+### Exercise 2: Build from Source
+1. Download and compile Redis from source
+2. Create a systemd service for your compiled Redis
+3. Configure it to start on boot
+4. Create a package using checkinstall
+5. Document the build process
+
+### Exercise 3: Application Deployment
+1. Create a deployment structure for a web application
+2. Implement a zero-downtime deployment script
+3. Set up environment-specific configurations
+4. Configure application secrets management
+5. Create health monitoring for your application
+
+### Exercise 4: Configuration Management
+1. Set up a Git repository for system configurations
+2. Create configuration templates using environment variables
+3. Implement automated configuration backups
+4. Set up a configuration validation system
+5. Document your configuration structure
+
+---
+
+## Quick Reference
+
+### APT Commands
+`sudo apt update` {{ copy }}
+
+`sudo apt upgrade` {{ copy }}
+
+`sudo apt install package` {{ copy }}
+
+`sudo apt remove package` {{ copy }}
+
+`sudo apt purge package` {{ copy }}
+
+`sudo apt autoremove` {{ copy }}
+
+`sudo apt search keyword` {{ copy }}
+
+`apt show package` {{ copy }}
+
+`apt list --installed` {{ copy }}
+
+`apt list --upgradable` {{ copy }}
+
+`sudo apt-mark hold package` {{ copy }}
+
+### Snap Commands
+`snap list` {{ copy }}
+
+`snap search package` {{ copy }}
+
+`sudo snap install package` {{ copy }}
+
+`sudo snap remove package` {{ copy }}
+
+`sudo snap refresh` {{ copy }}
+
+`snap info package` {{ copy }}
+
+`snap connections package` {{ copy }}
+
+`sudo snap revert package` {{ copy }}
+
+### Configuration Commands
+`printenv` {{ copy }}
+
+`export VAR=value` {{ copy }}
+
+`source file` {{ copy }}
+
+`systemctl edit service` {{ copy }}
+
+`systemctl daemon-reload` {{ copy }}
+
+`journalctl -u service` {{ copy }}
+
+`git diff` {{ copy }}
+
+`envsubst < template > output` {{ copy }}
+
+### Build Commands
+`./configure` {{ copy }}
+
+`make` {{ copy }}
+
+`make test` {{ copy }}
+
+`sudo make install` {{ copy }}
+
+`sudo checkinstall` {{ copy }}
+
+`pkg-config --list-all` {{ copy }}
+
+`ldd binary` {{ copy }}
+
+---
+
+## Additional Resources
+
+### Documentation
+- [Ubuntu Server Guide - Package Management](https://ubuntu.com/server/docs/package-management)
+- [Debian Administrator's Handbook](https://debian-handbook.info/browse/stable/packaging-system.html)
+- [Snapcraft Documentation](https://snapcraft.io/docs)
+- [Systemd Service Management](https://www.freedesktop.org/software/systemd/man/systemd.service.html)
+
+### Package Repositories
+- [Ubuntu Packages](https://packages.ubuntu.com/)
+- [Launchpad PPAs](https://launchpad.net/ubuntu/+ppas)
+- [Snap Store](https://snapcraft.io/store)
+- [Docker Hub](https://hub.docker.com/)
+
+### Configuration Management Tools
+- [Ansible](https://www.ansible.com/)
+- [Puppet](https://puppet.com/)
+- [Chef](https://www.chef.io/)
+- [SaltStack](https://saltproject.io/)
+
+### Security Resources
+- [OWASP Configuration Guide](https://owasp.org/www-project-configuration-security/)
+- [Linux Secrets Management](https://www.vaultproject.io/)
+- [GPG Encryption Guide](https://www.gnupg.org/documentation/)
+
+### Next Steps
+After completing this section, you should:
+- Understand how to manage packages with APT
+- Be able to compile software from source
+- Know how to properly deploy applications
+- Understand configuration and secrets management
+
+Continue to Part 6: Service Management and Automation to learn about automating tasks and managing services efficiently.
