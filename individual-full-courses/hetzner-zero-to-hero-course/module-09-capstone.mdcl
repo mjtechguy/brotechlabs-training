@@ -1,0 +1,1372 @@
+# Module 9: Capstone Project
+
+**Duration:** 4-6 hours
+**Difficulty:** Advanced
+**Cost:** ~$2-4 (if you complete within one day)
+
+## Project Overview
+
+In this capstone project, you'll design and deploy a complete, production-ready web application infrastructure on Hetzner Cloud. This project combines everything you've learned across all modules.
+
+**What you'll build:**
+
+A multi-tier web application with:
+- Load-balanced web servers
+- Separate database server
+- Private networking for security
+- Volume storage for data persistence
+- Automated backups
+- Monitoring and alerting
+- Proper user management and access control
+
+**Real-world scenario:**
+
+You're deploying a production e-commerce platform that needs to handle traffic, protect customer data, and maintain high availability.
+
+---
+
+## Project Requirements
+
+### Infrastructure Components
+
+**Required servers:**
+1. **Load Balancer** - Distribute traffic across web servers
+2. **Web Server 1** - Primary application server
+3. **Web Server 2** - Secondary application server (for redundancy)
+4. **Database Server** - PostgreSQL database (private network only)
+
+**Required resources:**
+- Private network for secure internal communication
+- Firewall rules for each tier
+- Volume storage for database data
+- SSH keys for secure access
+- Monitoring scripts
+- Backup automation
+
+### Architecture Diagram
+
+```
+                    Internet
+                       │
+                       ↓
+                Load Balancer (Public)
+                  CPX11, ash
+                  Firewall: 80, 443
+                       │
+        ┌──────────────┴──────────────┐
+        ↓                             ↓
+    Web Server 1              Web Server 2
+    CPX11, ash               CPX11, ash
+    Nginx + App              Nginx + App
+    Firewall: LB only        Firewall: LB only
+        │                             │
+        └──────────────┬──────────────┘
+                       ↓
+                 Private Network
+                  10.0.0.0/16
+                       │
+                       ↓
+                Database Server
+                 CPX21, ash
+              PostgreSQL + Volume
+            No public access
+            Firewall: Web servers only
+```
+
+---
+
+## Phase 1: Planning & Setup
+
+### Step 1: Initialize Project Context
+
+Create a project-specific context in hcloud CLI:
+
+```bash{{ copy }}
+hcloud context create capstone-project
+```
+
+Switch to it:
+
+```bash{{ execute }}
+hcloud context use capstone-project
+```
+
+Set your API token:
+
+```bash{{ copy }}
+hcloud context active
+```
+
+### Step 2: Generate SSH Keys
+
+If you haven't already, generate a project-specific SSH key:
+
+```bash{{ copy }}
+ssh-keygen -t ed25519 -C "capstone-project" -f ~/.ssh/id_ed25519_capstone
+```
+
+Add to Hetzner:
+
+```bash{{ copy }}
+hcloud ssh-key create --name capstone-key --public-key-from-file ~/.ssh/id_ed25519_capstone.pub
+```
+
+Verify:
+
+```bash{{ execute }}
+hcloud ssh-key list
+```
+
+### Step 3: Plan Your Network
+
+**Design decisions:**
+
+- **Location:** Ashburn (ash) for all resources
+- **Private network:** 10.0.0.0/16
+  - Web servers: 10.0.1.0/24 subnet
+  - Database: 10.0.2.0/24 subnet
+- **Server types:**
+  - Load balancer: CPX11 (2 vCPU, 2GB RAM)
+  - Web servers: CPX11 (2 vCPU, 2GB RAM)
+  - Database: CPX21 (3 vCPU, 4GB RAM)
+
+---
+
+## Phase 2: Network Infrastructure
+
+### Step 1: Create Private Network
+
+```bash{{ copy }}
+hcloud network create \
+  --name capstone-network \
+  --ip-range 10.0.0.0/16
+```
+
+### Step 2: Create Subnets
+
+**Web tier subnet:**
+
+```bash{{ copy }}
+hcloud network add-subnet capstone-network \
+  --type cloud \
+  --network-zone us-east \
+  --ip-range 10.0.1.0/24
+```
+
+**Database tier subnet:**
+
+```bash{{ copy }}
+hcloud network add-subnet capstone-network \
+  --type cloud \
+  --network-zone us-east \
+  --ip-range 10.0.2.0/24
+```
+
+Verify:
+
+```bash{{ execute }}
+hcloud network describe capstone-network
+```
+
+---
+
+## Phase 3: Database Server
+
+### Step 1: Create Database Volume
+
+```bash{{ copy }}
+hcloud volume create \
+  --name db-data \
+  --size 50 \
+  --location ash \
+  --format ext4
+```
+
+### Step 2: Create Database Server
+
+```bash{{ copy }}
+hcloud server create \
+  --name db-server \
+  --type cpx21 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key capstone-key \
+  --network capstone-network
+```
+
+Wait for server creation:
+
+```bash{{ execute }}
+hcloud server list
+```
+
+### Step 3: Attach Volume to Database Server
+
+```bash{{ copy }}
+hcloud volume attach db-data db-server
+```
+
+### Step 4: Configure Database Server
+
+Get the server's IP:
+
+```bash{{ execute }}
+hcloud server describe db-server
+```
+
+SSH into database server (use public IP for now):
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@db-server-ip
+```
+
+**Mount the volume:**
+
+```bash{{ execute }}
+lsblk
+sudo mkdir -p /mnt/db-data
+sudo mount /dev/sdb /mnt/db-data
+```
+
+**Make mount persistent:**
+
+```bash{{ execute }}
+sudo blkid /dev/sdb
+```
+
+Copy the UUID, then:
+
+```bash{{ execute }}
+sudo nano /etc/fstab
+```
+
+Add line:
+```
+UUID=your-uuid-here /mnt/db-data ext4 defaults,nofail 0 2
+```
+
+**Install PostgreSQL:**
+
+```bash{{ execute }}
+sudo apt update
+sudo apt install postgresql postgresql-contrib -y
+```
+
+**Move PostgreSQL data to volume:**
+
+```bash{{ execute }}
+sudo systemctl stop postgresql
+sudo rsync -av /var/lib/postgresql/ /mnt/db-data/postgresql/
+```
+
+**Configure PostgreSQL to use new location:**
+
+```bash{{ execute }}
+sudo nano /etc/postgresql/16/main/postgresql.conf
+```
+
+Change:
+```
+data_directory = '/mnt/db-data/postgresql/16/main'
+```
+
+**Start PostgreSQL:**
+
+```bash{{ execute }}
+sudo systemctl start postgresql
+sudo systemctl status postgresql
+```
+
+**Create application database and user:**
+
+```bash{{ execute }}
+sudo -u postgres psql
+```
+
+In PostgreSQL prompt:
+
+```sql
+CREATE DATABASE ecommerce;
+CREATE USER appuser WITH PASSWORD 'SecurePassword123!';
+GRANT ALL PRIVILEGES ON DATABASE ecommerce TO appuser;
+\q
+```
+
+**Configure PostgreSQL to accept connections from web servers:**
+
+```bash{{ execute }}
+sudo nano /etc/postgresql/16/main/postgresql.conf
+```
+
+Change:
+```
+listen_addresses = '10.0.2.4'  # Use the private IP
+```
+
+```bash{{ execute }}
+sudo nano /etc/postgresql/16/main/pg_hba.conf
+```
+
+Add:
+```
+# Allow web servers on private network
+host    all             all             10.0.1.0/24            md5
+```
+
+**Restart PostgreSQL:**
+
+```bash{{ execute }}
+sudo systemctl restart postgresql
+```
+
+**Get database server's private IP:**
+
+```bash{{ execute }}
+ip addr show
+```
+
+Note the IP on `ens10` interface (should be in 10.0.2.0/24 range).
+
+Exit the database server:
+
+```bash{{ execute }}
+exit
+```
+
+---
+
+## Phase 4: Web Servers
+
+### Step 1: Create Web Server 1
+
+```bash{{ copy }}
+hcloud server create \
+  --name web-1 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key capstone-key \
+  --network capstone-network
+```
+
+### Step 2: Create Web Server 2
+
+```bash{{ copy }}
+hcloud server create \
+  --name web-2 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key capstone-key \
+  --network capstone-network
+```
+
+Wait for creation:
+
+```bash{{ execute }}
+hcloud server list
+```
+
+### Step 3: Configure Web Server 1
+
+SSH into web-1:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+```
+
+**Install Nginx and PostgreSQL client:**
+
+```bash{{ execute }}
+sudo apt update
+sudo apt install nginx postgresql-client -y
+```
+
+**Test database connection:**
+
+```bash{{ copy }}
+psql -h 10.0.2.4 -U appuser -d ecommerce
+```
+
+Enter password when prompted. If successful, you can connect!
+
+```sql
+\l
+\q
+```
+
+**Create a simple application:**
+
+```bash{{ execute }}
+sudo nano /var/www/html/index.html
+```
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>E-Commerce App - Web Server 1</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .server-info {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .server-name {
+            color: #2196F3;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="server-info">
+        <div class="server-name">Web Server 1</div>
+        <p>Status: ✅ Online</p>
+        <p>Location: Ashburn, VA</p>
+        <p>Database: Connected</p>
+    </div>
+</body>
+</html>
+```
+
+**Configure Nginx:**
+
+```bash{{ execute }}
+sudo nano /etc/nginx/sites-available/default
+```
+
+Ensure this is in the `server` block:
+
+```nginx
+location / {
+    try_files $uri $uri/ =404;
+}
+
+# Health check endpoint for load balancer
+location /health {
+    access_log off;
+    return 200 "healthy\n";
+    add_header Content-Type text/plain;
+}
+```
+
+**Test and reload Nginx:**
+
+```bash{{ execute }}
+sudo nginx -t
+sudo systemctl reload nginx
+sudo systemctl status nginx
+```
+
+**Get web-1 private IP:**
+
+```bash{{ execute }}
+ip addr show ens10
+```
+
+Note the private IP (10.0.1.x).
+
+Exit:
+
+```bash{{ execute }}
+exit
+```
+
+### Step 4: Configure Web Server 2
+
+SSH into web-2:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-2-ip
+```
+
+Follow the same steps as Web Server 1, but change the HTML to say "Web Server 2":
+
+```bash{{ execute }}
+sudo apt update
+sudo apt install nginx postgresql-client -y
+```
+
+Create index.html (change to "Web Server 2"):
+
+```bash{{ execute }}
+sudo nano /var/www/html/index.html
+```
+
+Configure Nginx with health check endpoint:
+
+```bash{{ execute }}
+sudo nano /etc/nginx/sites-available/default
+```
+
+Reload:
+
+```bash{{ execute }}
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+Get private IP:
+
+```bash{{ execute }}
+ip addr show ens10
+```
+
+Exit:
+
+```bash{{ execute }}
+exit
+```
+
+---
+
+## Phase 5: Load Balancer
+
+### Step 1: Create Load Balancer
+
+```bash{{ copy }}
+hcloud load-balancer create \
+  --name web-lb \
+  --type lb11 \
+  --location ash
+```
+
+### Step 2: Add Web Servers as Targets
+
+**Add web-1:**
+
+```bash{{ copy }}
+hcloud load-balancer add-target web-lb \
+  --server web-1
+```
+
+**Add web-2:**
+
+```bash{{ copy }}
+hcloud load-balancer add-target web-lb \
+  --server web-2
+```
+
+### Step 3: Configure Load Balancer Service
+
+**Add HTTP service:**
+
+```bash{{ copy }}
+hcloud load-balancer add-service web-lb \
+  --protocol http \
+  --listen-port 80 \
+  --destination-port 80 \
+  --health-check-protocol http \
+  --health-check-port 80 \
+  --health-check-interval 15s \
+  --health-check-timeout 10s \
+  --health-check-retries 3 \
+  --health-check-http-path /health
+```
+
+### Step 4: Get Load Balancer IP
+
+```bash{{ execute }}
+hcloud load-balancer describe web-lb
+```
+
+Note the public IPv4 address.
+
+### Step 5: Test Load Balancer
+
+Open your browser and visit:
+```
+http://load-balancer-ip
+```
+
+Refresh multiple times - you should see it alternate between "Web Server 1" and "Web Server 2"!
+
+---
+
+## Phase 6: Firewall Configuration
+
+### Step 1: Create Database Firewall
+
+```bash{{ copy }}
+hcloud firewall create --name db-firewall
+```
+
+**Allow PostgreSQL only from web servers:**
+
+```bash{{ copy }}
+hcloud firewall add-rule db-firewall \
+  --direction in \
+  --protocol tcp \
+  --port 5432 \
+  --source-ips 10.0.1.0/24
+```
+
+**Allow SSH from anywhere (for administration):**
+
+```bash{{ copy }}
+hcloud firewall add-rule db-firewall \
+  --direction in \
+  --protocol tcp \
+  --port 22 \
+  --source-ips 0.0.0.0/0 \
+  --source-ips ::/0
+```
+
+**Apply to database server:**
+
+```bash{{ copy }}
+hcloud firewall apply-to-resource db-firewall \
+  --type server \
+  --server db-server
+```
+
+### Step 2: Create Web Server Firewall
+
+```bash{{ copy }}
+hcloud firewall create --name web-firewall
+```
+
+**Allow HTTP/HTTPS from load balancer:**
+
+```bash{{ copy }}
+hcloud firewall add-rule web-firewall \
+  --direction in \
+  --protocol tcp \
+  --port 80 \
+  --source-ips 0.0.0.0/0 \
+  --source-ips ::/0
+
+hcloud firewall add-rule web-firewall \
+  --direction in \
+  --protocol tcp \
+  --port 443 \
+  --source-ips 0.0.0.0/0 \
+  --source-ips ::/0
+```
+
+**Allow SSH:**
+
+```bash{{ copy }}
+hcloud firewall add-rule web-firewall \
+  --direction in \
+  --protocol tcp \
+  --port 22 \
+  --source-ips 0.0.0.0/0 \
+  --source-ips ::/0
+```
+
+**Apply to web servers:**
+
+```bash{{ copy }}
+hcloud firewall apply-to-resource web-firewall \
+  --type server \
+  --server web-1
+
+hcloud firewall apply-to-resource web-firewall \
+  --type server \
+  --server web-2
+```
+
+---
+
+## Phase 7: Monitoring & Backups
+
+### Step 1: Create Backup Script
+
+SSH into database server:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@db-server-ip
+```
+
+**Create database backup script:**
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/backup-db.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# PostgreSQL backup script
+
+BACKUP_DIR="/var/backups/postgresql"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="ecommerce-${TIMESTAMP}.sql"
+
+# Create backup directory
+mkdir -p ${BACKUP_DIR}
+
+# Backup database
+sudo -u postgres pg_dump ecommerce > ${BACKUP_DIR}/${BACKUP_FILE}
+
+# Compress backup
+gzip ${BACKUP_DIR}/${BACKUP_FILE}
+
+# Delete backups older than 7 days
+find ${BACKUP_DIR} -name "ecommerce-*.sql.gz" -mtime +7 -delete
+
+# Log
+echo "$(date): Backup completed: ${BACKUP_FILE}.gz" >> /var/log/db-backup.log
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/backup-db.sh
+```
+
+**Test backup:**
+
+```bash{{ execute }}
+sudo /usr/local/bin/backup-db.sh
+ls -lh /var/backups/postgresql/
+```
+
+**Schedule daily backups:**
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add:
+```
+0 2 * * * /usr/local/bin/backup-db.sh
+```
+
+### Step 2: Create Volume Snapshot
+
+From your local machine:
+
+```bash{{ copy }}
+hcloud volume create-snapshot db-data \
+  --description "initial-deployment-$(date +%Y%m%d)"
+```
+
+### Step 3: Create Monitoring Script
+
+On database server:
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/monitor-db.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# Database monitoring script
+
+LOGFILE="/var/log/db-monitor.log"
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+
+# Check PostgreSQL is running
+if ! systemctl is-active --quiet postgresql; then
+    echo "$TIMESTAMP CRITICAL: PostgreSQL is down" >> $LOGFILE
+fi
+
+# Check database connections
+CONNECTIONS=$(sudo -u postgres psql -t -c "SELECT count(*) FROM pg_stat_activity;")
+if [ $CONNECTIONS -gt 50 ]; then
+    echo "$TIMESTAMP WARNING: High connection count: $CONNECTIONS" >> $LOGFILE
+fi
+
+# Check disk space on volume
+DISK_USAGE=$(df -h /mnt/db-data | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 80 ]; then
+    echo "$TIMESTAMP WARNING: Disk usage at ${DISK_USAGE}%" >> $LOGFILE
+fi
+
+echo "$TIMESTAMP INFO: Health check completed" >> $LOGFILE
+```
+
+**Make executable and schedule:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/monitor-db.sh
+sudo crontab -e
+```
+
+Add:
+```
+*/5 * * * * /usr/local/bin/monitor-db.sh
+```
+
+Exit database server:
+
+```bash{{ execute }}
+exit
+```
+
+### Step 4: Monitor Web Servers
+
+SSH into web-1:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+```
+
+**Install monitoring tools:**
+
+```bash{{ execute }}
+sudo apt install htop -y
+```
+
+**Create web server health check:**
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/monitor-web.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# Web server monitoring script
+
+LOGFILE="/var/log/web-monitor.log"
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+
+# Check Nginx is running
+if ! systemctl is-active --quiet nginx; then
+    echo "$TIMESTAMP CRITICAL: Nginx is down" >> $LOGFILE
+    sudo systemctl start nginx
+fi
+
+# Check if we can connect to database
+if ! pg_isready -h 10.0.2.4 -U appuser > /dev/null 2>&1; then
+    echo "$TIMESTAMP WARNING: Cannot connect to database" >> $LOGFILE
+fi
+
+# Check disk space
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 80 ]; then
+    echo "$TIMESTAMP WARNING: Disk usage at ${DISK_USAGE}%" >> $LOGFILE
+fi
+
+echo "$TIMESTAMP INFO: Health check completed" >> $LOGFILE
+```
+
+**Make executable and schedule:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/monitor-web.sh
+sudo crontab -e
+```
+
+Add:
+```
+*/5 * * * * /usr/local/bin/monitor-web.sh
+```
+
+**Repeat for web-2:**
+
+Exit web-1 and SSH into web-2, then run the same monitoring setup.
+
+---
+
+## Phase 8: User Management & Access Control
+
+### Step 1: Create Application User on Web Servers
+
+SSH into web-1:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+```
+
+**Create deploy user:**
+
+```bash{{ execute }}
+sudo adduser --disabled-password --gecos "Deploy User" deploy
+sudo usermod -aG sudo deploy
+```
+
+**Set up SSH key for deploy user:**
+
+```bash{{ execute }}
+sudo mkdir -p /home/deploy/.ssh
+sudo chmod 700 /home/deploy/.ssh
+```
+
+**Copy root's authorized_keys:**
+
+```bash{{ execute }}
+sudo cp /root/.ssh/authorized_keys /home/deploy/.ssh/
+sudo chown -R deploy:deploy /home/deploy/.ssh
+sudo chmod 600 /home/deploy/.ssh/authorized_keys
+```
+
+**Configure sudo without password for specific commands:**
+
+```bash{{ execute }}
+sudo visudo
+```
+
+Add:
+```
+deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx, /usr/bin/systemctl reload nginx
+```
+
+**Test:**
+
+```bash{{ execute }}
+su - deploy
+sudo systemctl reload nginx
+exit
+```
+
+Repeat for web-2.
+
+### Step 2: Create Database Admin User
+
+On database server:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@db-server-ip
+```
+
+```bash{{ execute }}
+sudo adduser --disabled-password --gecos "DB Admin" dbadmin
+sudo mkdir -p /home/dbadmin/.ssh
+sudo cp /root/.ssh/authorized_keys /home/dbadmin/.ssh/
+sudo chown -R dbadmin:dbadmin /home/dbadmin/.ssh
+sudo chmod 700 /home/dbadmin/.ssh
+sudo chmod 600 /home/dbadmin/.ssh/authorized_keys
+```
+
+**Grant PostgreSQL access:**
+
+```bash{{ execute }}
+sudo -u postgres createuser --superuser dbadmin
+```
+
+---
+
+## Phase 9: Testing & Validation
+
+### Step 1: Test Load Balancing
+
+**Check load balancer status:**
+
+```bash{{ execute }}
+hcloud load-balancer describe web-lb
+```
+
+**Test from command line:**
+
+```bash{{ copy }}
+curl http://load-balancer-ip
+curl http://load-balancer-ip
+curl http://load-balancer-ip
+```
+
+You should see different server names on different requests.
+
+### Step 2: Test Database Connectivity
+
+SSH into web-1:
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+```
+
+```bash{{ copy }}
+psql -h 10.0.2.4 -U appuser -d ecommerce -c "SELECT version();"
+```
+
+### Step 3: Test Failover
+
+**Stop nginx on web-1:**
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+sudo systemctl stop nginx
+exit
+```
+
+**Test load balancer:**
+
+```bash{{ copy }}
+curl http://load-balancer-ip
+```
+
+You should only see "Web Server 2" responses.
+
+**Start nginx again:**
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+sudo systemctl start nginx
+exit
+```
+
+### Step 4: Test Backup
+
+**Trigger manual backup:**
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@db-server-ip
+sudo /usr/local/bin/backup-db.sh
+ls -lh /var/backups/postgresql/
+```
+
+**Test restore:**
+
+```bash{{ execute }}
+sudo -u postgres psql
+```
+
+```sql
+-- Create test table
+\c ecommerce
+CREATE TABLE test_backup (id SERIAL, data TEXT);
+INSERT INTO test_backup (data) VALUES ('test data');
+SELECT * FROM test_backup;
+\q
+```
+
+**Restore from backup:**
+
+```bash{{ execute }}
+cd /var/backups/postgresql
+ls -lt | head -2
+```
+
+```bash{{ copy }}
+# Find latest backup and restore
+LATEST=$(ls -t ecommerce-*.sql.gz | head -1)
+gunzip -c $LATEST | sudo -u postgres psql ecommerce
+```
+
+### Step 5: View Monitoring Logs
+
+**Check database monitoring:**
+
+```bash{{ execute }}
+sudo tail -20 /var/log/db-monitor.log
+```
+
+**Check backup logs:**
+
+```bash{{ execute }}
+sudo tail -20 /var/log/db-backup.log
+```
+
+**Check web server monitoring:**
+
+```bash{{ copy }}
+ssh -i ~/.ssh/id_ed25519_capstone root@web-1-ip
+sudo tail -20 /var/log/web-monitor.log
+```
+
+---
+
+## Phase 10: Documentation & Cleanup
+
+### Step 1: Document Your Infrastructure
+
+Create a local documentation file:
+
+```bash{{ execute }}
+nano ~/capstone-infrastructure.md
+```
+
+```markdown
+# Capstone Project Infrastructure
+
+## Servers
+
+| Server | Type | Location | Public IP | Private IP | Role |
+|--------|------|----------|-----------|------------|------|
+| db-server | CPX21 | ash | x.x.x.x | 10.0.2.4 | PostgreSQL Database |
+| web-1 | CPX11 | ash | x.x.x.x | 10.0.1.x | Web Server |
+| web-2 | CPX11 | ash | x.x.x.x | 10.0.1.x | Web Server |
+
+## Load Balancer
+
+- Name: web-lb
+- Type: lb11
+- Public IP: x.x.x.x
+- Targets: web-1, web-2
+
+## Network
+
+- Private Network: capstone-network (10.0.0.0/16)
+- Web Subnet: 10.0.1.0/24
+- DB Subnet: 10.0.2.0/24
+
+## Storage
+
+- Volume: db-data (50 GB)
+- Mount: /mnt/db-data on db-server
+- PostgreSQL data: /mnt/db-data/postgresql
+
+## Credentials
+
+- Database: ecommerce
+- DB User: appuser
+- SSH Key: capstone-key
+
+## Backups
+
+- Daily PostgreSQL dump at 2 AM
+- Retention: 7 days
+- Location: /var/backups/postgresql on db-server
+
+## Monitoring
+
+- Health checks every 5 minutes
+- Logs: /var/log/*-monitor.log
+
+## Access
+
+- Deploy user on web servers (sudo for nginx)
+- dbadmin user on database server
+```
+
+### Step 2: Cost Analysis
+
+**Calculate monthly costs:**
+
+```bash{{ execute }}
+hcloud server list
+hcloud load-balancer list
+hcloud volume list
+```
+
+**Estimated monthly costs:**
+- db-server (CPX21): €6.49 (~$7.07)/month
+- web-1 (CPX11): €4.51 (~$4.92)/month
+- web-2 (CPX11): €4.51 (~$4.92)/month
+- Load balancer (lb11): €5.39 (~$5.88)/month
+- Volume 50GB (db-data): €2.45 (~$2.67)/month
+
+**Total: ~€23.35/month (~$25/month)**
+
+### Step 3: Cleanup (Optional)
+
+**If you want to tear down the infrastructure:**
+
+```bash{{ copy }}
+# Delete load balancer
+hcloud load-balancer delete web-lb
+
+# Delete servers
+hcloud server delete web-1
+hcloud server delete web-2
+hcloud server delete db-server
+
+# Detach and delete volume
+hcloud volume detach db-data
+hcloud volume delete db-data
+
+# Delete firewalls
+hcloud firewall delete web-firewall
+hcloud firewall delete db-firewall
+
+# Delete network
+hcloud network delete capstone-network
+
+# Delete SSH key
+hcloud ssh-key delete capstone-key
+```
+
+**Verify cleanup:**
+
+```bash{{ execute }}
+hcloud server list
+hcloud load-balancer list
+hcloud volume list
+hcloud network list
+hcloud firewall list
+```
+
+---
+
+## Bonus Challenges
+
+Want to go further? Try these enhancements:
+
+### Challenge 1: SSL/TLS Certificate
+
+Add HTTPS support using Let's Encrypt:
+
+1. Install Certbot on load balancer
+2. Obtain SSL certificate
+3. Configure HTTPS (port 443)
+4. Redirect HTTP to HTTPS
+
+### Challenge 2: Database Replication
+
+Set up PostgreSQL replication:
+
+1. Create second database server (read replica)
+2. Configure streaming replication
+3. Update web servers to use read replica for SELECT queries
+
+### Challenge 3: Advanced Monitoring
+
+Implement comprehensive monitoring:
+
+1. Install Prometheus on monitoring server
+2. Set up node exporters on all servers
+3. Configure Grafana dashboards
+4. Set up AlertManager for notifications
+
+### Challenge 4: CI/CD Pipeline
+
+Automate deployments:
+
+1. Set up Git repository
+2. Create deployment script
+3. Configure webhook triggers
+4. Automate zero-downtime deployments
+
+### Challenge 5: Auto-Scaling
+
+Implement auto-scaling:
+
+1. Create server template/snapshot
+2. Write scaling script based on load
+3. Automatically add/remove web servers
+4. Update load balancer targets dynamically
+
+---
+
+## Project Checklist
+
+Mark off each item as you complete it:
+
+**Infrastructure:**
+- [ ] Created private network with subnets
+- [ ] Created database server with volume
+- [ ] Created two web servers
+- [ ] Created and configured load balancer
+- [ ] Configured firewalls for each tier
+
+**Database:**
+- [ ] Installed PostgreSQL
+- [ ] Moved data directory to volume
+- [ ] Created application database and user
+- [ ] Configured network access
+- [ ] Tested connectivity from web servers
+
+**Web Servers:**
+- [ ] Installed Nginx
+- [ ] Created test application
+- [ ] Configured health check endpoint
+- [ ] Tested database connectivity
+
+**Load Balancing:**
+- [ ] Added web servers as targets
+- [ ] Configured health checks
+- [ ] Verified traffic distribution
+- [ ] Tested failover
+
+**Security:**
+- [ ] Created firewall rules
+- [ ] Restricted database access to private network
+- [ ] Created non-root users
+- [ ] Configured sudo access
+- [ ] Set up SSH keys
+
+**Monitoring & Maintenance:**
+- [ ] Created backup scripts
+- [ ] Scheduled automated backups
+- [ ] Created monitoring scripts
+- [ ] Scheduled health checks
+- [ ] Tested backup restoration
+
+**Testing:**
+- [ ] Verified load balancing
+- [ ] Tested database connectivity
+- [ ] Tested server failover
+- [ ] Verified backups work
+- [ ] Checked monitoring logs
+
+**Documentation:**
+- [ ] Documented infrastructure
+- [ ] Recorded credentials
+- [ ] Calculated costs
+- [ ] Created runbook
+
+---
+
+## Reflection Questions
+
+After completing the project, reflect on these questions:
+
+1. **What was the most challenging part of the project?**
+2. **How would you improve this infrastructure for production use?**
+3. **What monitoring metrics would be most important to track?**
+4. **How would you handle a database server failure?**
+5. **What security improvements could be made?**
+6. **How would you scale this infrastructure to handle 10x traffic?**
+7. **What cost optimizations could you implement?**
+8. **What did you learn about cloud infrastructure design?**
+
+---
+
+## Next Steps
+
+**Congratulations!** 🎉
+
+You've completed the Hetzner Cloud Zero to Hero course!
+
+**You now have the skills to:**
+
+✅ Design multi-tier cloud architectures
+✅ Configure secure networking
+✅ Manage persistent storage
+✅ Implement high availability
+✅ Set up monitoring and backups
+✅ Manage users and access control
+✅ Deploy production-ready applications
+
+**Continue your learning:**
+
+1. **Explore Hetzner's other services:**
+   - Dedicated servers
+   - Storage boxes
+   - Managed databases
+
+2. **Learn infrastructure as code:**
+   - Terraform for Hetzner Cloud
+   - Ansible for configuration management
+   - CI/CD pipelines
+
+3. **Dive deeper into specific topics:**
+   - Kubernetes on Hetzner Cloud
+   - Database optimization and tuning
+   - Advanced security hardening
+   - Performance optimization
+
+4. **Build real projects:**
+   - Deploy your own applications
+   - Create client solutions
+   - Contribute to open source
+
+**Resources:**
+- [Hetzner Cloud Documentation](https://docs.hetzner.com/cloud)
+- [Hetzner Community Tutorials](https://community.hetzner.com/tutorials)
+- [Hetzner Cloud API Reference](https://docs.hetzner.cloud/)
+
+---
+
+## Course Complete! 🚀
+
+You've mastered Hetzner Cloud from zero to hero.
+
+**Thank you for taking this journey!**
+
+If you found this course helpful, consider:
+- Sharing it with others
+- Providing feedback for improvements
+- Building something amazing with your new skills
+
+**Happy cloud computing!**

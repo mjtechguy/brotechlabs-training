@@ -1,0 +1,1486 @@
+# Module 1: Deploying and Managing Servers
+
+Now that you understand Hetzner Cloud basics, it's time to create your first servers and learn how to manage them!
+
+`This module teaches you everything about creating, managing, and maintaining cloud servers` {{ note }}
+
+---
+
+## Module Overview
+
+**Time:** 3 hours
+
+**What you'll learn:**
+- Understanding server hardware specifications
+- Deploy servers using the web console
+- Deploy servers using the CLI
+- Manage server lifecycle (start, stop, reboot, etc.)
+- Work with images and snapshots
+- Compare performance between server types
+
+**What you'll build:**
+- Your first cloud server (CPX and CAX)
+- Server snapshots for backup
+- Test different server configurations
+
+**Cost:** $5-8 (remember to delete resources after!)
+
+**Note:** This module focuses on US data centers (Ashburn, VA). All examples use CPX (AMD) or CAX (Arm) servers, as CX servers are not available in US regions.
+
+---
+
+## 1.1: Understanding Server Types and Hardware Options
+
+Before creating servers, let's understand what you're actually getting.
+
+### What is a "Server"?
+
+In Hetzner Cloud, a **server** is:
+- A virtual computer (VPS/Virtual Private Server)
+- Running on physical hardware in a data center
+- That you control remotely via the internet
+- Running an operating system (Linux, usually)
+
+**Think of it like:**
+- Renting a computer in someone else's building
+- You control it completely (it's "yours")
+- But you access it over the internet, not physically
+
+### Server Specifications Explained
+
+Every server has these specifications:
+
+**vCPUs (Virtual CPUs)**
+- The processing power / "brain"
+- More vCPUs = can do more tasks simultaneously
+- Example: 2 vCPUs can handle web server + database
+
+**RAM (Memory)**
+- Temporary storage for running programs
+- More RAM = can run more/bigger programs
+- Measured in GB (gigabytes)
+- Example: 4 GB RAM can run a small website + cache
+
+**Storage (Disk)**
+- Permanent storage for files, OS, applications
+- Everything you save goes here
+- SSD (Solid State Drive) = very fast
+- Measured in GB
+- Example: 40 GB storage = enough for OS + small application
+
+**Traffic/Bandwidth**
+- Data transferred to/from your server
+- All Hetzner servers include 20 TB/month FREE
+- 20 TB = massive (most sites use <1 TB)
+
+**Network**
+- Connection speed to the internet
+- Hetzner provides gigabit connectivity
+- Very fast - rarely a bottleneck
+
+### Server Type Breakdown (October 2025)
+
+Let's look at each server type in detail:
+
+**Regular Performance (CPX) - Best for US Regions**
+
+**Important:** CX (Cost-Optimized) servers are NOT available in US data centers (Ashburn, Hillsboro). CPX is the standard shared vCPU option for US deployments.
+
+```
+CPX11 - ~€5 (~$5.45)+/month
+├─ 2 vCPUs (shared, AMD EPYC-Genoa)
+├─ 2 GB RAM
+├─ 40 GB SSD storage
+├─ 20 TB traffic
+└─ Use case: Small production sites
+```
+
+```
+CPX21 - ~€8 (~$8.72)+/month
+├─ 3 vCPUs (shared, AMD EPYC-Genoa)
+├─ 4 GB RAM
+├─ 80 GB SSD storage
+├─ 20 TB traffic
+└─ Use case: WordPress, small e-commerce
+```
+
+**Dedicated CPU (CCX) - Best for Performance**
+
+```
+CCX13 - ~€35 (~$38.15)+/month
+├─ 2 dedicated CPU cores (AMD EPYC)
+├─ 8 GB RAM
+├─ 80 GB SSD storage
+├─ 20 TB traffic
+└─ Use case: Production databases, high-load apps
+```
+
+**Arm64 (CAX) - Best Value**
+
+```
+CAX11 - €3.92 (~$4.27)/month
+├─ 2 vCPUs (shared, Ampere Altra Arm64)
+├─ 4 GB RAM
+├─ 40 GB SSD storage
+├─ 20 TB traffic
+└─ Use case: Modern apps, containers, ARM workloads
+```
+
+### How to Choose the Right Server Type
+
+**Decision tree (for US regions):**
+
+```
+What's your goal?
+│
+├─ Just learning Hetzner?
+│  └─ CPX11 (~$5-6/mo, good for practice)
+│
+├─ Development/testing environment?
+│  └─ CPX11 or CAX11 (affordable, good performance)
+│
+├─ Production website with low traffic?
+│  └─ CPX21 (AMD Genoa performance)
+│
+├─ Production with moderate traffic?
+│  └─ CPX31 or CCX13 (more resources)
+│
+└─ High-traffic production or database?
+   └─ CCX21 or higher (dedicated CPUs)
+```
+
+**Remember:** In US data centers, CPX is your entry-level option (CX is not available).
+
+### Operating System (Image) Options
+
+Hetzner provides several Linux distributions:
+
+**Ubuntu** (Recommended for beginners)
+- Most popular Linux distribution
+- Huge community and documentation
+- Long-term support (LTS) versions available
+- Example: Ubuntu 22.04 LTS, Ubuntu 24.04 LTS
+
+**Debian** (More stable, conservative)
+- Very stable, less frequent updates
+- Good for servers that "just work"
+- Ubuntu is based on Debian
+
+**Fedora** (Cutting edge)
+- Latest software and features
+- Red Hat based
+- Updates frequently
+
+**Rocky Linux / AlmaLinux** (CentOS replacement)
+- Enterprise-grade Linux
+- Red Hat compatible
+- Good for corporate environments
+
+**For this course:** We'll use **Ubuntu 24.04 LTS** because:
+- Beginner-friendly
+- Great documentation
+- Latest LTS with long-term support (supported until 2029)
+- Modern kernel and packages
+- Most tutorials use Ubuntu
+
+---
+
+## 1.2: Deploying via the Hetzner Console
+
+Let's create your first server using the web interface!
+
+### Step 1: Log into Hetzner Cloud Console
+
+Visit: https://console.hetzner.cloud
+
+Select your project (the one you created in Module 0).
+
+### Step 2: Navigate to Servers
+
+Click "Servers" in the left sidebar.
+
+You should see an empty list (or any servers you've already created).
+
+Click the red "Add Server" button (top right).
+
+### Step 3: Choose Location
+
+**Location** = Which data center your server runs in
+
+For this tutorial, choose: **Ashburn, VA (ash)**
+
+**Why Ashburn?**
+- Located on US East Coast (Virginia)
+- Close to major US population centers
+- Good connectivity to North America
+- Supports CPX and CAX servers
+
+**US Location Options:**
+- **Ashburn, VA (ash)** - East Coast (recommended for this course)
+- **Hillsboro, OR (hil)** - West Coast
+
+**How to choose location in real projects:**
+- Choose closest to your users (lower latency)
+- East Coast (ash) serves Eastern US, Europe
+- West Coast (hil) serves Western US, Asia
+- Both locations support CPX (AMD) and CAX (Arm) servers
+
+### Step 4: Choose Image (Operating System)
+
+Scroll down to "Images" section.
+
+Click "OS Images" tab (should be selected by default).
+
+Find and select: **Ubuntu 24.04**
+
+**What you're choosing:**
+- The operating system that runs on your server
+- Ubuntu 24.04 = Ubuntu version 24.04 LTS (latest)
+- LTS = Long Term Support (supported for 5 years until 2029)
+
+### Step 5: Choose Type (Server Size)
+
+Scroll to "Type" section.
+
+You'll see server type categories.
+
+**For this first server, select:**
+- **Shared vCPU** category
+- **CPX11** plan (2 vCPUs, 2 GB RAM, 40 GB SSD - ~$5-6/month)
+
+**Why CPX11?**
+- Entry-level option for US regions
+- Powered by AMD EPYC-Genoa processors
+- Enough resources for learning
+- Good performance for the price
+
+**Note the pricing shown:**
+- Monthly price: ~$5-6 (€5 (~$5.45)+)
+- Hourly price: ~$0.007-0.008 per hour
+- You'll only pay for hours used!
+
+**Important:** CX (Cost-Optimized) servers are not available in US regions. CPX is your starting option.
+
+### Step 6: Networking (Leave Defaults)
+
+**IPv4:** Enabled (you get one free IPv4 address)
+
+**IPv6:** Enabled (you get a whole IPv6 subnet free)
+
+**Private Network:** None (skip for now, we'll cover in Module 2)
+
+**Firewall:** None (skip for now, we'll cover in Module 4)
+
+### Step 7: SSH Keys
+
+**SSH keys** = Secure way to access your server (better than passwords)
+
+If you created an SSH key in Module 0:
+- Select your SSH key from the list
+
+If you don't have an SSH key yet:
+- Click "Create SSH Key"
+- Follow the instructions to generate one
+- Or select "Use password instead" for now (less secure)
+
+**For beginners:** It's okay to skip SSH keys for now and use password. We'll cover SSH keys properly in Module 4.
+
+### Step 8: Volumes
+
+**Volumes** = Additional storage you can attach (like an external hard drive)
+
+For this tutorial: **Skip** (don't add any volumes)
+
+We'll cover volumes in Module 3.
+
+### Step 9: Cloud-Init (User Data)
+
+**Cloud-init** = Scripts that run when the server first boots
+
+For this tutorial: **Leave empty**
+
+We'll cover cloud-init in Module 6.
+
+### Step 10: Name Your Server
+
+Give your server a name:
+
+**Name:** `my-first-cpx-server`
+
+**Names should:**
+- Be descriptive
+- Use lowercase
+- Use hyphens instead of spaces
+- Example: `web-server-1`, `database-prod`, `cpx-test-01`
+
+### Step 11: Labels (Optional)
+
+**Labels** = Tags for organizing servers
+
+For now: **Skip** (we'll cover in Module 5)
+
+### Step 12: Create Server!
+
+Review your selections:
+- Location: Ashburn, VA (ash)
+- Image: Ubuntu 24.04
+- Type: CPX11
+- Name: my-first-cpx-server
+
+Click "Create & Buy Now" button at bottom right.
+
+### Step 13: Wait for Creation
+
+You'll see a progress indicator.
+
+**Server creation takes about 30-60 seconds.**
+
+The server goes through these states:
+1. **Creating** - Being provisioned
+2. **Starting** - Booting up
+3. **Running** - Ready to use!
+
+When status shows **Running**, your server is ready! 🎉
+
+### Step 14: Get Server Details
+
+Once running, you'll see server details:
+
+**IPv4 Address:** (example: 95.216.123.45)
+- This is your server's internet address
+- Use this to connect to your server
+
+**Root Password:** (if not using SSH keys)
+- Click the eye icon to reveal
+- Copy this password (you'll need it to log in)
+
+**Server is now running and billing has started!**
+- You're being charged ~$0.007-0.008 per hour
+- Remember to delete it when done practicing
+
+### Step 15: Connect to Your Server
+
+**On Mac/Linux:**
+
+Open Terminal and run:
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+Replace YOUR_SERVER_IP with your actual server IP.
+
+If using password:
+- Type "yes" when asked about fingerprint
+- Paste the root password
+- Press Enter
+
+You should see:
+
+```
+Welcome to Ubuntu 24.04 LTS
+root@my-first-cpx-server:~#
+```
+
+**You're now logged into your cloud server!** 🎉
+
+**On Windows:**
+
+Use PowerShell or Windows Terminal:
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+Or use PuTTY if you prefer a GUI.
+
+---
+
+## 1.3: Deploying via hcloud CLI
+
+The CLI (command line) is faster once you know the commands. Let's create the same server using CLI!
+
+### Step 1: Verify CLI is Configured
+
+Check that hcloud is working:
+
+`hcloud context list` {{ execute }}
+
+Should show your active context with `*`.
+
+### Step 2: Create Server with One Command
+
+Here's the magic - create a server with ONE command:
+
+`hcloud server create --name my-cpx-cli-server --type cpx11 --image ubuntu-24.04 --location ash` {{ execute }}
+
+Let's break down this command:
+
+```bash{{ copy }}
+hcloud server create              # Create a new server
+  --name my-cpx-cli-server       # Name it "my-cpx-cli-server"
+  --type cpx11                   # Use CPX11 type (AMD Genoa)
+  --image ubuntu-24.04           # Ubuntu 24.04 LTS operating system
+  --location ash                 # Ashburn, VA data center (US East)
+```
+
+**Output:**
+
+You'll see output like:
+
+```
+Waiting for server 12345678 to have started... done
+Server 12345678 created
+IPv4: 95.216.234.56
+Root password: AbC123XyZ789
+```
+
+**That's it!** Server created in one command! ⚡
+
+### Step 3: View Your Servers
+
+List all servers:
+
+`hcloud server list` {{ execute }}
+
+You'll see a table:
+
+```
+ID        NAME                  STATUS    IPv4
+12345678  my-first-cpx-server   running   95.216.123.45
+12345679  my-cpx-cli-server     running   95.216.234.56
+```
+
+### Step 4: Get Detailed Info About a Server
+
+Get details about specific server:
+
+`hcloud server describe my-cpx-cli-server` {{ execute }}
+
+You'll see complete information:
+- ID, name, status
+- Server type, location
+- IP addresses
+- Creation date
+- Pricing
+
+### Step 5: More Creation Options
+
+**Create with SSH key:**
+
+`hcloud server create --name secure-server --type cpx11 --image ubuntu-24.04 --location ash --ssh-key my-ssh-key` {{ execute }}
+
+**Create on West Coast:**
+
+`hcloud server create --name west-server --type cpx11 --image ubuntu-24.04 --location hil` {{ execute }}
+
+**Create ARM server:**
+
+`hcloud server create --name arm-server --type cax11 --image ubuntu-24.04 --location ash` {{ execute }}
+
+**Create with cloud-init:**
+
+`hcloud server create --name auto-server --type cpx11 --image ubuntu-24.04 --location ash --user-data-from-file cloud-init.yml` {{ execute }}
+
+### Comparison: Console vs CLI
+
+| Aspect | Web Console | CLI (hcloud) |
+|--------|-------------|--------------|
+| Speed | Slower (clicking) | Very fast (one command) |
+| Learning curve | Easier for beginners | Requires learning commands |
+| Automation | Not automatable | Fully scriptable |
+| Visual feedback | Lots of visual info | Text output only |
+| Multiple servers | Tedious | Easy (loop in script) |
+| Best for | Learning, occasional use | Daily use, automation |
+
+**Recommendation:**
+- Learn both!
+- Use Console when exploring/learning
+- Use CLI for daily operations
+- Use CLI for automation
+
+---
+
+## 1.4: Server Lifecycle Management
+
+Once you have servers, you need to manage them. Let's learn all the operations!
+
+### Server States
+
+A server can be in different states:
+
+**Running** 🟢
+- Server is on and operating
+- You can SSH into it
+- You're being charged hourly rate
+- All services running
+
+**Stopped** 🔴
+- Server is off (like powered down computer)
+- Cannot SSH into it
+- You pay LESS (no compute charges, only storage)
+- IP address is retained
+- Data is retained
+
+**Starting** 🟡
+- Server is booting up
+- Transitions from Stopped → Running
+- Takes 10-30 seconds
+
+**Stopping** 🟡
+- Server is shutting down
+- Transitions from Running → Stopped
+- Takes 10-30 seconds
+
+**Migrating** 🟡
+- Server being moved to different physical hardware
+- Usually happens during maintenance
+- Brief downtime
+
+### Start and Stop Operations
+
+**Why stop a server?**
+- Save money (don't pay compute costs when not in use)
+- Maintenance window
+- Reduce costs for dev/test environments overnight
+
+#### Using Web Console
+
+**Stop a server:**
+1. Go to "Servers"
+2. Click on server name
+3. Click "Power" button (top right)
+4. Select "Power off"
+5. Confirm
+
+**Start a server:**
+1. Go to stopped server
+2. Click "Power" button
+3. Select "Power on"
+
+#### Using CLI
+
+**Stop a server:**
+
+`hcloud server stop my-cli-server` {{ execute }}
+
+Output:
+```
+Waiting for server to stop... done
+```
+
+**Start a server:**
+
+`hcloud server start my-cli-server` {{ execute }}
+
+Output:
+```
+Waiting for server to start... done
+```
+
+**Check current status:**
+
+`hcloud server list` {{ execute }}
+
+### Reboot Operations
+
+**Reboot** = Restart the server (stop + start in one operation)
+
+**When to reboot:**
+- After kernel updates
+- To clear memory/cache
+- When server is unresponsive
+- After configuration changes
+
+**Types of reboot:**
+
+**Graceful reboot** (recommended)
+- Operating system shuts down cleanly
+- All programs close properly
+- No data loss
+
+**Force reboot** (emergency only)
+- Like pulling the power plug
+- OS doesn't shut down gracefully
+- Risk of data corruption
+- Only use if server is frozen
+
+#### Using Web Console
+
+**Graceful reboot:**
+1. Server details page
+2. "Power" button
+3. "Reboot"
+4. Confirm
+
+**Force reboot:**
+1. Server details page
+2. "Power" button
+3. "Force reboot"
+4. Confirm (use with caution!)
+
+#### Using CLI
+
+**Graceful reboot:**
+
+`hcloud server reboot my-cli-server` {{ execute }}
+
+**Force reboot:**
+
+`hcloud server reset my-cli-server` {{ execute }}
+
+**Difference:**
+- `reboot` = asks OS to restart (graceful)
+- `reset` = forces restart (like power button)
+
+### Rescue Mode
+
+**Rescue Mode** = Special recovery environment for troubleshooting
+
+**Use rescue mode when:**
+- Can't SSH into server
+- Forgot root password
+- Need to recover data
+- Fix boot issues
+- Reset SSH keys
+
+**How rescue mode works:**
+1. Server boots from rescue system (not your OS)
+2. Your normal disk is available at `/dev/sda1` or similar
+3. You can mount it and access files
+4. Fix issues
+5. Reboot back to normal mode
+
+#### Using Web Console
+
+**Enable rescue mode:**
+1. Server details page
+2. "Rescue" tab (left sidebar)
+3. Click "Enable Rescue & Power Cycle"
+4. Note the rescue password shown
+5. Server reboots into rescue mode
+
+**Exit rescue mode:**
+1. Fix whatever issue you had
+2. Go to "Rescue" tab
+3. Click "Disable Rescue"
+4. Power cycle server
+5. Boots back to normal OS
+
+#### Using CLI
+
+**Enable rescue mode:**
+
+`hcloud server enable-rescue my-cli-server` {{ execute }}
+
+Output shows rescue password.
+
+**Reboot into rescue:**
+
+`hcloud server reboot my-cli-server` {{ execute }}
+
+**Disable rescue mode:**
+
+`hcloud server disable-rescue my-cli-server` {{ execute }}
+
+Then reboot to go back to normal.
+
+### Rescue Mode Example
+
+Let's say you forgot your root password:
+
+**Step 1: Enable rescue**
+
+`hcloud server enable-rescue my-cli-server` {{ execute }}
+
+Note the rescue password shown.
+
+**Step 2: Reboot into rescue**
+
+`hcloud server reset my-cli-server` {{ execute }}
+
+**Step 3: SSH into rescue system**
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+Use rescue password.
+
+**Step 4: Mount your disk**
+
+```bash{{ execute }}
+mkdir /mnt/root
+mount /dev/sda1 /mnt/root
+```
+
+**Step 5: Chroot into your system**
+
+```bash{{ execute }}
+chroot /mnt/root
+```
+
+**Step 6: Reset root password**
+
+```bash{{ execute }}
+passwd root
+```
+
+Enter new password twice.
+
+**Step 7: Exit and cleanup**
+
+```bash{{ execute }}
+exit
+umount /mnt/root
+```
+
+**Step 8: Disable rescue and reboot**
+
+`hcloud server disable-rescue my-cli-server` {{ execute }}
+
+`hcloud server reboot my-cli-server` {{ execute }}
+
+**Step 9: SSH with new password**
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+Use your new password!
+
+### Reinstall Server
+
+**Reinstall** = Wipe server and start fresh with new OS
+
+**When to reinstall:**
+- Want to start over from scratch
+- Switch to different OS
+- Server is compromised
+- Testing automation
+
+**WARNING:** Reinstall **deletes ALL data!**
+
+#### Using Web Console
+
+1. Server details page
+2. "Rebuild" tab (left sidebar)
+3. Select new image (or same one)
+4. Click "Rebuild Server"
+5. Confirm (read warning!)
+6. Server is wiped and reinstalled
+
+#### Using CLI
+
+**Reinstall with same image:**
+
+`hcloud server rebuild my-cli-server` {{ execute }}
+
+**Reinstall with different image:**
+
+`hcloud server rebuild my-cli-server --image debian-12` {{ execute }}
+
+**Note:** Always backup data before rebuilding!
+
+### Delete Server
+
+**Delete** = Permanently remove server and stop billing
+
+**When to delete:**
+- Done with project/testing
+- No longer need the server
+- Want to stop charges
+
+**What happens when you delete:**
+- Server is shut down
+- All data is deleted (cannot be recovered!)
+- IP address is released
+- Billing stops immediately
+- **PERMANENT - CANNOT BE UNDONE!**
+
+#### Using Web Console
+
+1. Server details page
+2. Scroll to bottom
+3. "Delete Server" section
+4. Click "Delete Server"
+5. Type server name to confirm
+6. Click "Delete"
+
+#### Using CLI
+
+**Delete a server:**
+
+`hcloud server delete my-cli-server` {{ execute }}
+
+Type "yes" to confirm.
+
+**Force delete (no confirmation):**
+
+`hcloud server delete my-cli-server --delete-protection=false` {{ execute }}
+
+**Delete multiple servers:**
+
+```bash{{ execute }}
+hcloud server delete server-1
+hcloud server delete server-2
+hcloud server delete server-3
+```
+
+---
+
+## 1.5: Images, Snapshots, and Rebuilds
+
+Learn to backup servers and create reusable images.
+
+### What is an Image?
+
+**Image** = A template for creating servers
+
+**Types of images:**
+
+**1. System Images** (provided by Hetzner)
+- Official OS images: Ubuntu, Debian, Fedora, etc.
+- Always available
+- Free to use
+- Cannot be deleted
+
+**2. Snapshots** (you create these)
+- Exact copy of your server at a point in time
+- Includes OS + all your data and configuration
+- Can be used to create identical servers
+- Costs: €0.0119 (~$0.01) per GB/month
+
+**3. Backups** (automated snapshots)
+- Automatic daily or weekly snapshots
+- Rotated (old ones deleted automatically)
+- Cost: 20% of server price
+- Disabled by default
+
+### Creating a Snapshot
+
+**Why create snapshots:**
+- Backup before risky changes
+- Create template for deploying more servers
+- Disaster recovery
+- Testing (snapshot → test → restore if breaks)
+
+#### Using Web Console
+
+**Create snapshot:**
+1. Go to server details
+2. Click "Images" tab (left sidebar)
+3. Click "Create Image"
+4. Type snapshot name: "my-first-snapshot"
+5. Description (optional): "Backup before updates"
+6. Click "Create Image"
+7. Wait 1-5 minutes (depends on server size)
+
+**Snapshot is created!**
+
+View your snapshots:
+1. Main menu → "Images"
+2. See all your snapshots
+
+#### Using CLI
+
+**Create snapshot:**
+
+`hcloud server create-image my-first-server --description "Backup before updates" --type snapshot` {{ execute }}
+
+Output:
+```
+Image 1234567 created from server 12345678
+```
+
+**List your snapshots:**
+
+`hcloud image list --type snapshot` {{ execute }}
+
+You'll see:
+```
+ID       TYPE      NAME                  DESCRIPTION
+1234567  snapshot  my-first-server       Backup before updates
+```
+
+### Using a Snapshot to Create New Server
+
+You can create a new server from a snapshot!
+
+**Use cases:**
+- Clone a server (create identical copy)
+- Scale horizontally (create multiple copies)
+- Restore from backup
+
+#### Using Web Console
+
+1. Click "Add Server"
+2. Under "Images" select "Snapshots" tab
+3. Select your snapshot
+4. Choose server type (can be different!)
+5. Complete normal server creation
+6. New server is created with exact copy of snapshotted data
+
+#### Using CLI
+
+`hcloud server create --name cloned-server --type cx23 --image 1234567 --location nbg1` {{ execute }}
+
+Replace `1234567` with your snapshot ID.
+
+**Result:** New server with identical setup to the snapshot!
+
+### Rebuilding from Snapshot
+
+**Rebuild** = Replace server's current state with a snapshot
+
+**Use case:**
+- Server got messed up, restore to known good state
+- Test something, then restore
+
+#### Using Web Console
+
+1. Server details page
+2. "Rebuild" tab
+3. "Snapshots" section
+4. Select snapshot
+5. Click "Rebuild from Snapshot"
+6. Confirm
+
+**Current data deleted, snapshot restored!**
+
+#### Using CLI
+
+`hcloud server rebuild my-first-server --image 1234567` {{ execute }}
+
+### Snapshot Best Practices
+
+**1. Before risky changes**
+```bash{{ copy }}
+# Create snapshot
+hcloud server create-image my-server --type snapshot
+```
+
+**2. Regular backups**
+```bash{{ copy }}
+# Weekly snapshot
+hcloud server create-image prod-server --type snapshot --description "Weekly backup $(date +%Y-%m-%d)"
+```
+
+**3. Delete old snapshots**
+Snapshots cost money! Delete old ones:
+
+Console:
+- Images → Select snapshot → Delete
+
+CLI:
+`hcloud image delete 1234567` {{ execute }}
+
+**4. Name snapshots well**
+- Include date: `server-2025-10-20`
+- Include purpose: `before-nginx-update`
+- Include description
+
+### Backups vs Snapshots
+
+| Feature | Snapshots | Backups |
+|---------|-----------|---------|
+| Created | Manually | Automatically |
+| Schedule | When you want | Daily or Weekly |
+| Retention | Forever (until deleted) | Last 7 (rotating) |
+| Cost | €0.0119 (~$0.01)/GB/month | 20% of server price |
+| Use case | Before changes, templates | Set-and-forget protection |
+
+**Enable backups:**
+
+Console:
+1. Server details
+2. "Backups" tab
+3. Enable backups
+4. Choose window (when backups run)
+
+CLI:
+`hcloud server enable-backup my-server --backup-window "22-02"` {{ execute }}
+
+(Window 22-02 = backups run between 22:00-02:00)
+
+---
+
+## Lab 1: Deploy Servers and Compare Performance
+
+Time to practice everything you've learned!
+
+### Lab Objectives
+
+By the end of this lab, you will:
+- Deploy servers via console and CLI
+- Compare performance between CPX and CAX
+- Create and use snapshots
+- Manage server lifecycle
+- Understand cost implications
+
+### Part 1: Deploy via Console (CPX Server)
+
+**Task:** Create a CPX11 server via web console
+
+**Steps:**
+1. Log into https://console.hetzner.cloud
+2. Click "Add Server"
+3. Location: **Ashburn, VA (ash)**
+4. Image: **Ubuntu 24.04**
+5. Type: **CPX11** (Shared vCPU, AMD)
+6. Name: **lab-cpx-server**
+7. Create server
+8. Note the IP address
+
+**Checklist:**
+- ☐ Server created successfully
+- ☐ Server status shows "Running"
+- ☐ Recorded IP address
+
+### Part 2: Deploy via CLI (CAX Server)
+
+**Task:** Create a CAX11 server using hcloud CLI
+
+**Command:**
+
+`hcloud server create --name lab-cax-server --type cax11 --image ubuntu-24.04 --location ash` {{ execute }}
+
+**Checklist:**
+- ☐ Command succeeded
+- ☐ Server created
+- ☐ Recorded IP address
+
+### Part 3: SSH into Both Servers
+
+**Connect to CPX server:**
+
+`ssh root@CPX_SERVER_IP` {{ copy }}
+
+Once connected, check system info:
+
+`uname -a` {{ execute }}
+
+`lscpu | grep "Model name"` {{ execute }}
+
+Note the CPU model (should be AMD EPYC).
+
+Exit:
+
+`exit` {{ execute }}
+
+**Connect to CAX server:**
+
+`ssh root@CAX_SERVER_IP` {{ copy }}
+
+Check system info:
+
+`uname -a` {{ execute }}
+
+`lscpu | grep "Model name"` {{ execute }}
+
+Note the CPU model (should be Ampere Altra - ARM architecture).
+
+Exit:
+
+`exit` {{ execute }}
+
+### Part 4: Compare Performance
+
+Let's do a simple disk I/O benchmark!
+
+**On CPX server:**
+
+SSH in and run:
+
+`time dd if=/dev/zero of=test.img bs=1M count=1000 && rm test.img` {{ execute }}
+
+Note the "real" time (seconds) and MB/s speed.
+
+**On CAX server:**
+
+SSH in and run the same:
+
+`time dd if=/dev/zero of=test.img bs=1M count=1000 && rm test.img` {{ execute }}
+
+Note the "real" time (seconds) and MB/s speed.
+
+**Compare:**
+- Which was faster?
+- CAX often shows excellent performance for the price!
+- CPX with AMD EPYC-Genoa also shows strong disk performance
+
+### Part 5: Create a Snapshot
+
+**Task:** Install something, then snapshot it
+
+**On CPX server:**
+
+SSH in and install nginx:
+
+```bash{{ execute }}
+apt update
+apt install -y nginx
+systemctl enable nginx
+systemctl start nginx
+```
+
+Check it's running:
+
+`curl localhost` {{ execute }}
+
+You should see HTML!
+
+Exit the server.
+
+**Create snapshot via CLI:**
+
+`hcloud server create-image lab-cpx-server --type snapshot --description "With nginx installed"` {{ execute }}
+
+**Verify snapshot created:**
+
+`hcloud image list --type snapshot` {{ execute }}
+
+You should see your snapshot!
+
+### Part 6: Rebuild from Snapshot
+
+**Task:** Delete nginx, then restore from snapshot
+
+**SSH into CPX server:**
+
+`ssh root@CPX_SERVER_IP` {{ copy }}
+
+**Remove nginx:**
+
+```bash{{ execute }}
+systemctl stop nginx
+apt remove -y nginx
+```
+
+**Verify it's gone:**
+
+`curl localhost` {{ execute }}
+
+Should fail (connection refused).
+
+Exit the server.
+
+**Rebuild from snapshot via CLI:**
+
+First, get snapshot ID:
+
+`hcloud image list --type snapshot` {{ execute }}
+
+Note the ID (example: 123456).
+
+Rebuild:
+
+`hcloud server rebuild lab-cpx-server --image SNAPSHOT_ID` {{ execute }}
+
+Replace SNAPSHOT_ID with your snapshot ID.
+
+**Wait for rebuild (1-2 minutes).**
+
+**SSH back in:**
+
+`ssh root@CPX_SERVER_IP` {{ copy }}
+
+**Verify nginx is back:**
+
+`curl localhost` {{ execute }}
+
+Nginx is back! Snapshot restored! 🎉
+
+### Part 7: Server Lifecycle Practice
+
+**Stop CPX server via CLI:**
+
+`hcloud server stop lab-cpx-server` {{ execute }}
+
+**Verify it's stopped:**
+
+`hcloud server list` {{ execute }}
+
+Status should show "off".
+
+**Try to SSH (should fail):**
+
+`ssh root@CPX_SERVER_IP` {{ copy }}
+
+Connection should timeout (server is off).
+
+**Start it again:**
+
+`hcloud server start lab-cpx-server` {{ execute }}
+
+**Verify it's running:**
+
+`hcloud server list` {{ execute }}
+
+**SSH works again:**
+
+`ssh root@CPX_SERVER_IP` {{ copy }}
+
+Success!
+
+### Part 8: Check Costs
+
+**Via CLI:**
+
+`hcloud server describe lab-cpx-server` {{ execute }}
+
+Look for pricing information.
+
+**Via Console:**
+
+1. Go to server details
+2. See pricing info (monthly cap and hourly rate)
+3. Check "Graphs" tab for usage
+
+**Calculate your lab costs:**
+- CPX11: ~$0.007-0.008/hour
+- CAX11: ~$0.006-0.007/hour
+- Snapshot: (server size in GB) × $0.013/month
+
+For 2 hours of lab:
+- CPX11: ~$0.016
+- CAX11: ~$0.014
+- Total: ~$0.03 (3 cents!)
+
+### Part 9: Cleanup (IMPORTANT!)
+
+**Delete servers to stop charges:**
+
+`hcloud server delete lab-cpx-server` {{ execute }}
+
+Type "yes" to confirm.
+
+`hcloud server delete lab-cax-server` {{ execute }}
+
+Type "yes" to confirm.
+
+**Delete snapshot:**
+
+Get snapshot ID:
+
+`hcloud image list --type snapshot` {{ execute }}
+
+Delete it:
+
+`hcloud image delete SNAPSHOT_ID` {{ execute }}
+
+**Verify everything is deleted:**
+
+`hcloud server list` {{ execute }}
+
+Should be empty (or only other servers).
+
+`hcloud image list --type snapshot` {{ execute }}
+
+Should be empty.
+
+**Billing has stopped!** ✅
+
+---
+
+## Module 1 Summary
+
+Congratulations! You've completed Module 1! 🎉
+
+**What you learned:**
+✅ Server specifications (vCPU, RAM, storage, traffic)
+✅ Different server types (CX, CPX, CCX, CAX) and when to use each
+✅ How to deploy servers via web console
+✅ How to deploy servers via CLI (hcloud)
+✅ Server lifecycle: start, stop, reboot, rescue, reinstall, delete
+✅ Creating and using snapshots for backup and cloning
+✅ Comparing performance between server types
+✅ Cost management and cleanup
+
+**Key commands learned:**
+
+```bash{{ copy }}
+# Create server
+hcloud server create --name NAME --type TYPE --image IMAGE --location LOCATION
+
+# List servers
+hcloud server list
+
+# Server lifecycle
+hcloud server start NAME
+hcloud server stop NAME
+hcloud server reboot NAME
+hcloud server reset NAME
+hcloud server delete NAME
+
+# Snapshots
+hcloud server create-image NAME --type snapshot
+hcloud server rebuild NAME --image SNAPSHOT_ID
+hcloud image list --type snapshot
+hcloud image delete IMAGE_ID
+
+# Get details
+hcloud server describe NAME
+```
+
+**What's next:**
+In Module 2, you'll learn about networking - private networks, floating IPs, firewalls, and load balancing!
+
+---
+
+## Troubleshooting
+
+### "Cannot SSH into server"
+
+**Problem:** `ssh root@IP` doesn't work
+
+**Solutions:**
+
+1. **Check server is running:**
+
+`hcloud server list` {{ execute }}
+
+Status should be "running".
+
+2. **Check IP address is correct:**
+
+`hcloud server describe SERVER_NAME` {{ execute }}
+
+Verify IPv4 address.
+
+3. **Wait after creation:**
+Server might still be booting. Wait 30-60 seconds.
+
+4. **Check firewall:**
+If you have a firewall, make sure port 22 is open.
+
+5. **Try password authentication:**
+
+`ssh -o PubkeyAuthentication=no root@IP` {{ execute }}
+
+Use root password from console.
+
+### "Server creation failed"
+
+**Problem:** Server won't create
+
+**Solutions:**
+
+1. **Check location availability:**
+
+`hcloud location list` {{ execute }}
+
+Some server types aren't available in all locations.
+
+2. **Check server type exists:**
+
+`hcloud server-type list` {{ execute }}
+
+Verify type name is correct (e.g., "cx23" not "cx-23").
+
+3. **Check image name:**
+
+`hcloud image list --type system` {{ execute }}
+
+Use exact image name (e.g., "ubuntu-22.04").
+
+4. **Check payment method:**
+Verify credit card/payment method is valid in console.
+
+### "Snapshot creation stuck"
+
+**Problem:** Snapshot creation takes forever
+
+**Solutions:**
+
+1. **Snapshots of running servers take longer:**
+For fastest snapshots, stop server first:
+
+```bash{{ execute }}
+hcloud server stop SERVER
+hcloud server create-image SERVER --type snapshot
+hcloud server start SERVER
+```
+
+2. **Large disks take longer:**
+- 20 GB disk: 1-2 minutes
+- 80 GB disk: 3-5 minutes
+- 160 GB+ disk: 5-15 minutes
+
+3. **Check snapshot status in console:**
+Go to Images → See progress bar
+
+### "Ran out of money mid-lab"
+
+**Problem:** Server stopped due to insufficient funds
+
+**Solutions:**
+
+1. Add payment method or add credits
+2. Servers will be stopped (not deleted)
+3. Add funds, then start server again
+4. Set up billing alerts to prevent this
+
+---
+
+## Additional Resources
+
+**Official Documentation:**
+- [Hetzner Cloud Servers](https://docs.hetzner.com/cloud/servers)
+- [hcloud CLI Server Reference](https://github.com/hetznercloud/cli)
+- [Server Types](https://www.hetzner.com/cloud)
+
+**Useful Commands Reference:**
+- [hcloud server commands](https://github.com/hetznercloud/cli/blob/main/docs/hcloud_server.md)
+
+**Community:**
+- [Hetzner Community](https://community.hetzner.com/)
+- [hcloud GitHub Issues](https://github.com/hetznercloud/cli/issues)
+
+---
+
+## Quiz
+
+Test your knowledge!
+
+**1. What does vCPU stand for?**
+- [ ] Very Central Processing Unit
+- [x] Virtual Central Processing Unit
+- [ ] Verified CPU
+- [ ] Virtual Computer Power Unit
+
+**2. Which server type has dedicated CPU cores?**
+- [ ] CX
+- [ ] CPX
+- [x] CCX
+- [ ] CAX
+
+**3. What command creates a server via CLI?**
+- [ ] hcloud create server
+- [x] hcloud server create
+- [ ] hcloud new server
+- [ ] hcloud make server
+
+**4. What happens to billing when you stop a server?**
+- [ ] Billing stops completely
+- [x] Compute charges stop, storage charges continue
+- [ ] Billing continues at full rate
+- [ ] Server is deleted
+
+**5. What is a snapshot?**
+- [ ] A photo of your server
+- [x] A backup copy of your server
+- [ ] A server template from Hetzner
+- [ ] A monitoring metric
+
+**6. How much traffic is included with Hetzner servers?**
+- [ ] 1 TB
+- [ ] 5 TB
+- [x] 20 TB
+- [ ] Unlimited
+
+**7. What's the entry-level server for US regions as of Oct 2025?**
+- [ ] CX23 (not available in US)
+- [x] CPX11 at ~$5-6/month
+- [ ] CAX11 at ~$4-5/month
+- [ ] CCX13 (too expensive for entry)
+
+---
+
+**Next Module:** [Module 2 - Networking Essentials](./module-02-networking.mdcl)
+
+**Previous Module:** [Module 0 - Orientation & Fundamentals](./module-00-orientation.mdcl)
+
+**Back to:** [Course Overview](./README.md)

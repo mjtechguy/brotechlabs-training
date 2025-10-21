@@ -1,0 +1,1785 @@
+# Module 3: Storage & Data Management
+
+**Time:** 2 hours
+**Difficulty:** Beginner
+**Prerequisites:** Modules 0, 1, 2
+
+---
+
+## Module Overview
+
+In this module, you'll learn how to manage persistent storage on Hetzner Cloud. We'll cover the difference between root volumes (the built-in storage your server comes with) and additional volumes (extra storage you can attach), how to create and manage volumes, and best practices for backups.
+
+**What you'll learn:**
+- The difference between root volumes and attached volumes
+- How to create and attach volumes via Console and CLI
+- How to format, mount, and use volumes on Ubuntu 24.04
+- How to resize volumes and create snapshots
+- Backup strategies for your data
+
+**What you'll build:**
+- A 200 GB volume for data storage
+- A data transfer setup between two servers
+- A volume snapshot for backup
+
+---
+
+## 3.1 — Root Volumes vs Attached Volumes
+
+### What is Storage?
+
+**Storage** is where your server keeps all its files - the operating system, applications, configuration files, databases, user uploads, logs, and everything else. Think of it like the hard drive or SSD in your laptop.
+
+On Hetzner Cloud, there are two types of storage:
+
+### Root Volumes (Built-in Storage)
+
+**Root volume** is the primary storage that comes included with every server. It's called "root" because it contains the root filesystem - where your operating system (Ubuntu 24.04) is installed.
+
+**Characteristics:**
+- **Included:** Every server comes with a root volume
+- **Size:** Fixed based on server type (CPX11 has 40 GB, CPX21 has 80 GB, etc.)
+- **Ephemeral:** If you delete the server, the root volume is deleted too
+- **Boot drive:** This is where the server boots from
+- **Cost:** Included in server price, no extra charge
+
+**Example:** When you create a CPX11 server (~$5-6/month), you automatically get 40 GB of root volume storage included.
+
+**Use cases for root volumes:**
+- Operating system files (Ubuntu)
+- Installed applications (nginx, docker, etc.)
+- Configuration files (/etc/)
+- Temporary files
+- Small amounts of data that can be easily recreated
+
+### Attached Volumes (Additional Storage)
+
+**Volumes** (also called "block storage" or "attached volumes") are separate storage devices you can attach to your servers. Think of them like external hard drives you can plug into different computers.
+
+**Characteristics:**
+- **Optional:** You create them separately from servers
+- **Flexible size:** From 10 GB to 10,000 GB (10 TB)
+- **Persistent:** They exist independently of servers - delete the server, the volume remains
+- **Portable:** You can detach from one server and attach to another
+- **Cost:** ~$0.049 per GB/month (~$4.90/month for 100 GB)
+- **Network-attached:** Connected via network, not directly attached like a physical drive
+
+**Example:** You create a 200 GB volume (~$9.80/month) and attach it to your CPX11 server. Later, you can detach it and attach it to a different server.
+
+**Use cases for attached volumes:**
+- Database storage (PostgreSQL, MySQL)
+- User uploads and media files
+- Application data that needs to persist
+- Shared storage between servers (one at a time)
+- Large datasets
+
+### Key Differences Table
+
+| Feature | Root Volume | Attached Volume |
+|---------|-------------|-----------------|
+| **Included with server** | Yes | No (separate resource) |
+| **Survives server deletion** | No | Yes |
+| **Can be moved between servers** | No | Yes |
+| **Can be resized** | No (must upgrade server) | Yes (can grow, not shrink) |
+| **Can be snapshotted** | Yes (via server snapshot) | Yes (independent snapshots) |
+| **Performance** | Good | Good (network-attached) |
+| **Cost** | Included in server | ~$0.049/GB/month |
+
+### Storage Architecture Diagram
+
+```
+Server (CPX11 - $5-6/month)
+├─ Root Volume (40 GB) - Included
+│  ├─ /               (Ubuntu 24.04 OS)
+│  ├─ /etc/           (Configuration files)
+│  ├─ /var/log/       (Log files)
+│  └─ /home/          (User home directories)
+│
+└─ Attached Volume (200 GB) - $9.80/month extra
+   └─ /mnt/data/      (Your application data)
+      ├─ database/    (PostgreSQL data)
+      ├─ uploads/     (User files)
+      └─ backups/     (Application backups)
+```
+
+### When to Use Each Type
+
+**Use root volume when:**
+- You need to store the operating system (required)
+- You're installing applications and their binaries
+- Total data is small (under 20-30 GB)
+- Data can be easily recreated from configuration/scripts
+- You don't need to move data between servers
+
+**Use attached volumes when:**
+- You need more storage than the root volume provides
+- You're storing databases that need to persist
+- You have user-generated content (uploads, media)
+- You might need to move data to a different server
+- You want independent backups of just your data
+- You need to resize storage without changing servers
+
+### Example Scenario
+
+**Scenario:** You're running a WordPress website with a growing number of photos and blog posts.
+
+**Bad approach (root volume only):**
+- Install WordPress on CPX11 with 40 GB root volume
+- Store database and uploads on root volume
+- As site grows, you run out of space
+- Must upgrade entire server to CPX21 (80 GB) - costs more
+- If server crashes and is unrecoverable, you lose everything
+
+**Good approach (root + attached volume):**
+- Install WordPress on CPX11 with 40 GB root volume (for OS and app)
+- Create 200 GB attached volume for database and uploads
+- As site grows, resize volume to 300 GB, 500 GB, etc. - only pay for storage
+- If server crashes, detach volume and attach to new server - data is safe
+- Take volume snapshots regularly for backups
+
+---
+
+## 3.2 — Creating and Managing Volumes
+
+Now let's learn how to create volumes using both the Console (web interface) and the CLI (command line).
+
+### Creating a Volume via Console
+
+**Step 1: Navigate to Volumes**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Click **"Volumes"** in the left sidebar
+4. Click **"Create Volume"** button
+
+**Step 2: Configure Volume**
+
+You'll see a form with these options:
+
+**Name:**
+- Enter a descriptive name (e.g., `database-storage`, `media-files`, `lab-volume`)
+- Use lowercase, hyphens allowed
+- Example: `my-data-volume`
+
+**Location:**
+- Choose the same location as your server
+- **Important:** Volumes can only be attached to servers in the same location
+- For US deployments, choose **Ashburn, VA** (ash) or **Hillsboro, OR** (hil)
+- Example: `Ashburn, VA (ash)`
+
+**Size:**
+- Minimum: 10 GB
+- Maximum: 10,000 GB (10 TB)
+- You can increase this later, but not decrease
+- Cost: ~$0.049 per GB/month
+- Example: `100` GB = ~$4.90/month
+
+**Format volume:**
+- Check this box to automatically format the volume with ext4 filesystem
+- **Recommended for beginners:** Check this box
+- If unchecked, you'll need to format manually (we'll cover this)
+- ext4 is a reliable Linux filesystem
+
+**Automatically mount volume:**
+- Check this box to automatically mount the volume at `/mnt/HC_Volume_XXXXXXX`
+- **Recommended for beginners:** Check this box
+- If unchecked, you'll need to mount manually
+
+**Labels (optional):**
+- Add key-value labels for organization
+- Example: `environment=production`, `app=wordpress`
+- Not required for functionality
+
+**Step 3: Create**
+
+1. Review the monthly cost estimate
+2. Click **"Create & Buy Now"**
+3. Volume will be created in a few seconds
+
+**Step 4: Attach to Server**
+
+After creation, you need to attach the volume to a server:
+
+1. Click on your newly created volume
+2. Click **"Attach to Server"** dropdown
+3. Select your server (must be in same location)
+4. Click **"Attach Volume"**
+5. Volume is now attached!
+
+**What happens next:**
+- If you checked "automatically mount," the volume is ready at `/mnt/HC_Volume_XXXXXXX`
+- You can start using it immediately
+- We'll cover manual formatting and mounting next
+
+### Creating a Volume via CLI
+
+The `hcloud` CLI provides a faster way to create volumes, especially when automating.
+
+**Step 1: Create Volume**
+
+Basic command:
+
+```bash{{ copy }}
+hcloud volume create --name my-data-volume --size 100 --location ash
+```
+
+**Parameters explained:**
+- `--name`: Name for the volume (e.g., `database-storage`)
+- `--size`: Size in GB (e.g., `100` for 100 GB)
+- `--location`: Data center location (e.g., `ash` for Ashburn)
+
+**Example output:**
+
+```
+Volume 12345678 created
+```
+
+**Step 2: Attach Volume to Server**
+
+```bash{{ copy }}
+hcloud volume attach my-data-volume my-server
+```
+
+**Parameters:**
+- First argument: Volume name or ID
+- Second argument: Server name or ID
+
+**Example output:**
+
+```
+Volume my-data-volume attached to server my-server
+```
+
+**Step 3: Verify Attachment**
+
+Check that the volume is attached:
+
+```bash{{ copy }}
+hcloud volume describe my-data-volume
+```
+
+**Example output:**
+
+```
+ID:        12345678
+Name:      my-data-volume
+Size:      100 GB
+Server:    my-server (23456789)
+Location:  ash
+Created:   Mon Oct 20 10:30:00 UTC 2025
+```
+
+### Advanced Volume Creation Options
+
+**Create volume with automatic formatting:**
+
+```bash{{ copy }}
+hcloud volume create --name my-data-volume --size 100 --location ash --format ext4
+```
+
+The `--format ext4` flag tells Hetzner to automatically format the volume with the ext4 filesystem.
+
+**Create and attach in one command:**
+
+```bash{{ copy }}
+hcloud volume create --name my-data-volume --size 100 --server my-server --format ext4
+```
+
+This creates the volume and immediately attaches it to `my-server`. The server and volume must be in the same location.
+
+**Create volume with labels:**
+
+```bash{{ copy }}
+hcloud volume create --name my-data-volume --size 100 --location ash --label environment=production --label app=database
+```
+
+### Listing Volumes
+
+**Console:**
+- Click **"Volumes"** in sidebar
+- See all volumes with status, size, server attachment, and cost
+
+**CLI:**
+
+```bash{{ execute }}
+hcloud volume list
+```
+
+**Example output:**
+
+```
+ID         NAME              SIZE    SERVER      LOCATION
+12345678   my-data-volume    100 GB  my-server   ash
+23456789   database-storage  200 GB  db-server   ash
+34567890   media-files       500 GB  -           hil
+```
+
+Note: The `-` under SERVER means the volume is not currently attached.
+
+### Detaching Volumes
+
+You must detach a volume before you can attach it to a different server or delete it.
+
+**Console:**
+1. Click on the volume
+2. Click **"Detach Volume"**
+3. Confirm the action
+
+**CLI:**
+
+```bash{{ copy }}
+hcloud volume detach my-data-volume
+```
+
+**Important safety notes:**
+- **Unmount first:** Always unmount the volume from the filesystem BEFORE detaching
+- Failure to unmount can cause data corruption
+- We'll cover unmounting in the next section
+
+**Safe detachment process:**
+
+```bash{{ copy }}
+# 1. SSH into the server
+ssh root@your-server-ip
+
+# 2. Unmount the volume
+sudo umount /mnt/my-data-volume
+
+# 3. Exit SSH
+exit
+
+# 4. Detach via CLI
+hcloud volume detach my-data-volume
+```
+
+### Deleting Volumes
+
+**Console:**
+1. Ensure volume is detached first
+2. Click on the volume
+3. Click **"Delete"**
+4. Type the volume name to confirm
+5. Click **"Delete Volume"**
+
+**CLI:**
+
+```bash{{ copy }}
+# Detach first
+hcloud volume detach my-data-volume
+
+# Then delete
+hcloud volume delete my-data-volume
+```
+
+**Warning:** Deleting a volume is permanent and cannot be undone (unless you have a snapshot). All data will be lost.
+
+---
+
+## 3.3 — Formatting, Mounting, and Using Volumes
+
+Once you've created and attached a volume, you need to format it (prepare it for storing files) and mount it (make it accessible in your filesystem).
+
+### Understanding the Process
+
+Think of it like buying a new external hard drive for your laptop:
+
+1. **Attach:** Plug the USB cable in (like `hcloud volume attach`)
+2. **Format:** Initialize the drive with a filesystem (like ext4)
+3. **Mount:** Make the drive appear as a folder on your computer
+4. **Use:** Copy files to the drive
+
+### Checking Attached Volumes
+
+First, SSH into your server and check what volumes are attached:
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+```bash{{ execute }}
+lsblk
+```
+
+**What is lsblk?**
+- **lsblk** = "list block devices"
+- Shows all storage devices attached to your server
+- "Block device" is a technical term for storage devices
+
+**Example output:**
+
+```
+NAME    MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda       8:0    0   40G  0 disk
+├─sda1    8:1    0   40G  0 part /
+sdb       8:16   0  100G  0 disk
+```
+
+**Reading this output:**
+- `sda` = Your root volume (40 GB) - this is where Ubuntu is installed
+- `sda1` = Partition on sda, mounted at `/` (the root filesystem)
+- `sdb` = Your attached volume (100 GB) - not yet formatted or mounted
+
+The attached volume appears as `sdb` (or `sdc`, `sdd`, etc. if you have multiple volumes).
+
+### Formatting a Volume
+
+**What is formatting?**
+Formatting creates a **filesystem** on the volume. A filesystem is a structure that defines how files and folders are organized and stored.
+
+**Common Linux filesystems:**
+- **ext4:** Most common, reliable, good performance (recommended)
+- **xfs:** Good for large files, used in enterprise
+- **btrfs:** Advanced features like snapshots, but more complex
+
+We'll use **ext4** as it's the standard for Ubuntu.
+
+**Format the volume:**
+
+```bash{{ execute }}
+sudo mkfs.ext4 /dev/sdb
+```
+
+**Command breakdown:**
+- `sudo` = Run as administrator (required for disk operations)
+- `mkfs.ext4` = "make filesystem" with ext4 format
+- `/dev/sdb` = The device to format (your volume)
+
+**Example output:**
+
+```
+mke2fs 1.47.0 (5-Feb-2023)
+Creating filesystem with 26214400 4k blocks and 6553600 inodes
+Filesystem UUID: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+Superblock backups stored on blocks:
+    32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables: done
+Writing inode tables: done
+Creating journal (131072 blocks): done
+Writing superblocks and filesystem accounting information: done
+```
+
+This takes 10-30 seconds for a 100 GB volume.
+
+**Warning:** Formatting erases all data on the volume. Only do this on new volumes or when you want to completely erase existing data.
+
+### Creating a Mount Point
+
+A **mount point** is a directory (folder) where you'll access the volume's contents.
+
+**Create a directory:**
+
+```bash{{ execute }}
+sudo mkdir -p /mnt/data
+```
+
+**Command breakdown:**
+- `mkdir` = "make directory" (create a folder)
+- `-p` = Create parent directories if needed
+- `/mnt/data` = The path where you'll access your volume
+
+**Common mount points:**
+- `/mnt/data` - General data storage
+- `/mnt/database` - Database files
+- `/mnt/uploads` - User uploads
+- `/mnt/backups` - Backup storage
+
+You can use any path you want, but `/mnt/` is conventional for attached volumes.
+
+### Mounting the Volume
+
+**Mounting** makes the volume accessible at your chosen directory.
+
+```bash{{ execute }}
+sudo mount /dev/sdb /mnt/data
+```
+
+**Command breakdown:**
+- `mount` = Attach a filesystem to a directory
+- `/dev/sdb` = The volume device
+- `/mnt/data` = Where to mount it
+
+**Verify the mount:**
+
+```bash{{ execute }}
+df -h
+```
+
+**What is df -h?**
+- **df** = "disk free" - shows disk usage
+- **-h** = "human-readable" - shows sizes in GB/MB instead of bytes
+
+**Example output:**
+
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1        40G  2.5G   35G   7% /
+/dev/sdb        100G   24M   95G   1% /mnt/data
+```
+
+You can see your 100 GB volume mounted at `/mnt/data` with 95 GB available.
+
+### Using the Volume
+
+Now you can use the volume like any directory:
+
+**Create files:**
+
+```bash{{ execute }}
+sudo touch /mnt/data/test-file.txt
+echo "Hello from my volume!" | sudo tee /mnt/data/test-file.txt
+```
+
+**Create directories:**
+
+```bash{{ execute }}
+sudo mkdir /mnt/data/database
+sudo mkdir /mnt/data/uploads
+sudo mkdir /mnt/data/backups
+```
+
+**Check contents:**
+
+```bash{{ execute }}
+ls -lh /mnt/data
+```
+
+**Example output:**
+
+```
+total 12K
+drwxr-xr-x 2 root root 4.0K Oct 20 10:45 backups
+drwxr-xr-x 2 root root 4.0K Oct 20 10:45 database
+-rw-r--r-- 1 root root   23 Oct 20 10:44 test-file.txt
+drwxr-xr-x 2 root root 4.0K Oct 20 10:45 uploads
+```
+
+### Making Mounts Persistent (Automatic on Boot)
+
+**Problem:** If you reboot your server, the mount disappears. You have to manually mount again.
+
+**Solution:** Add the mount to `/etc/fstab` - a configuration file that defines what to mount at boot.
+
+**Step 1: Find the volume's UUID**
+
+**UUID** (Universally Unique Identifier) is a unique ID for your volume. Using UUID is safer than using device names like `/dev/sdb` because device names can change.
+
+```bash{{ execute }}
+sudo blkid /dev/sdb
+```
+
+**Example output:**
+
+```
+/dev/sdb: UUID="a1b2c3d4-e5f6-7890-abcd-ef1234567890" TYPE="ext4"
+```
+
+Copy the UUID (the part in quotes after `UUID=`).
+
+**Step 2: Edit /etc/fstab**
+
+```bash{{ execute }}
+sudo nano /etc/fstab
+```
+
+**What is nano?**
+- A simple text editor in the terminal
+- Use arrow keys to navigate
+- Type to edit
+- `Ctrl+O` to save, `Ctrl+X` to exit
+
+**Step 3: Add mount entry**
+
+Add this line at the end of the file (replace UUID with yours):
+
+```
+UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890 /mnt/data ext4 defaults,nofail 0 2
+```
+
+**What this means:**
+- `UUID=...` = The volume to mount
+- `/mnt/data` = Where to mount it
+- `ext4` = Filesystem type
+- `defaults,nofail` = Mount options (nofail = don't fail boot if volume is missing)
+- `0` = Don't dump (backup) - not needed
+- `2` = Filesystem check order
+
+**Step 4: Save and exit**
+
+1. Press `Ctrl+O` to save
+2. Press `Enter` to confirm
+3. Press `Ctrl+X` to exit
+
+**Step 5: Test the configuration**
+
+```bash{{ execute }}
+sudo umount /mnt/data
+sudo mount -a
+```
+
+**What is mount -a?**
+- Mounts all filesystems in `/etc/fstab`
+- Tests if your configuration is correct
+
+**Verify:**
+
+```bash{{ execute }}
+df -h | grep /mnt/data
+```
+
+If you see your volume mounted, it's configured correctly and will auto-mount on every reboot.
+
+### Unmounting a Volume
+
+Before detaching a volume, always unmount it first.
+
+```bash{{ execute }}
+sudo umount /mnt/data
+```
+
+**What happens:**
+- All file operations are flushed to disk
+- The volume is safely disconnected from the filesystem
+- Prevents data corruption
+
+**If unmount fails (device is busy):**
+
+```bash{{ execute }}
+# Check what's using the volume
+sudo lsof +f -- /mnt/data
+
+# Kill those processes or navigate out of the directory
+# Then try unmounting again
+sudo umount /mnt/data
+```
+
+---
+
+## 3.4 — Volume Snapshots and Resizing
+
+### Volume Snapshots
+
+A **snapshot** is a point-in-time copy of your entire volume. Think of it like taking a photo of your data at a specific moment.
+
+**Why use snapshots:**
+- **Backups:** Restore data if you accidentally delete files
+- **Disaster recovery:** Restore entire volume if it becomes corrupted
+- **Testing:** Take snapshot before risky changes, restore if something breaks
+- **Cloning:** Create new volumes from snapshots
+
+**Cost:** ~$0.012 per GB/month (about 25% of volume price)
+- 100 GB snapshot = ~$1.20/month
+
+### Creating Snapshots via Console
+
+1. Click **"Volumes"** in sidebar
+2. Click on your volume
+3. Click **"Create Snapshot"**
+4. Enter a description (e.g., `before-database-upgrade`, `daily-backup-2025-10-20`)
+5. Click **"Create Snapshot"**
+6. Snapshot creation takes 1-5 minutes depending on volume size
+
+**Best practice:** Use descriptive names with dates:
+- `database-before-upgrade-2025-10-20`
+- `clean-state-after-setup`
+- `daily-backup-2025-10-20-0600`
+
+### Creating Snapshots via CLI
+
+```bash{{ copy }}
+hcloud volume create-snapshot my-data-volume --description "before-database-upgrade-2025-10-20"
+```
+
+**Check snapshots:**
+
+```bash{{ copy }}
+hcloud volume describe my-data-volume
+```
+
+**Example output:**
+
+```
+ID:         12345678
+Name:       my-data-volume
+Size:       100 GB
+Server:     my-server
+Location:   ash
+Snapshots:
+  - ID: 98765432
+    Description: before-database-upgrade-2025-10-20
+    Created: Mon Oct 20 11:00:00 UTC 2025
+    Size: 100 GB
+```
+
+### Restoring from Snapshot
+
+**Important:** You cannot restore a snapshot directly to an existing volume. Instead, you create a new volume from the snapshot.
+
+**Via Console:**
+
+1. Click **"Volumes"** in sidebar
+2. Click **"Create Volume"**
+3. Under **"Restore from snapshot"**, select your snapshot
+4. Choose size (must be >= snapshot size)
+5. Choose location (same as original)
+6. Click **"Create & Buy Now"**
+7. Attach the new volume to your server
+8. Mount it and verify your data
+
+**Via CLI:**
+
+```bash{{ copy }}
+# Create new volume from snapshot
+hcloud volume create --name restored-data --size 100 --location ash --snapshot-id 98765432
+
+# Attach to server
+hcloud volume attach restored-data my-server
+
+# SSH into server and mount
+ssh root@your-server-ip
+sudo mkdir -p /mnt/restored
+sudo mount /dev/sdc /mnt/restored
+ls /mnt/restored  # Verify your files are there
+```
+
+### Deleting Snapshots
+
+Snapshots cost money, so delete old ones you don't need.
+
+**Via Console:**
+
+1. Click on your volume
+2. Scroll to **"Snapshots"** section
+3. Click the trash icon next to the snapshot
+4. Confirm deletion
+
+**Via CLI:**
+
+```bash{{ copy }}
+# List snapshots
+hcloud volume describe my-data-volume
+
+# Delete snapshot by ID
+hcloud volume delete-snapshot 98765432
+```
+
+### Resizing Volumes
+
+You can increase volume size at any time. **You cannot decrease volume size.**
+
+**Via Console:**
+
+1. Click on your volume
+2. Click **"Resize"**
+3. Enter new size (must be larger than current)
+4. Review new monthly cost
+5. Click **"Resize Volume"**
+6. Resizing takes a few seconds
+
+**Via CLI:**
+
+```bash{{ copy }}
+hcloud volume resize my-data-volume --size 200
+```
+
+This increases the volume from 100 GB to 200 GB.
+
+### Expanding the Filesystem After Resize
+
+**Important:** After resizing the volume, you must expand the filesystem to use the new space.
+
+**Step 1: Check current size**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+df -h | grep /mnt/data
+```
+
+**Example output:**
+
+```
+/dev/sdb        100G   10G   85G  11% /mnt/data
+```
+
+Even though you resized to 200 GB, the filesystem still shows 100 GB.
+
+**Step 2: Resize the filesystem**
+
+For ext4 filesystems:
+
+```bash{{ execute }}
+sudo resize2fs /dev/sdb
+```
+
+**What is resize2fs?**
+- "resize ext2/ext3/ext4 filesystem"
+- Expands the filesystem to use all available space on the volume
+
+**Example output:**
+
+```
+resize2fs 1.47.0 (5-Feb-2023)
+Filesystem at /dev/sdb is mounted on /mnt/data; on-line resizing required
+old_desc_blocks = 13, new_desc_blocks = 25
+The filesystem on /dev/sdb is now 52428800 (4k) blocks long.
+```
+
+**Step 3: Verify new size**
+
+```bash{{ execute }}
+df -h | grep /mnt/data
+```
+
+**Example output:**
+
+```
+/dev/sdb        197G   10G  177G   6% /mnt/data
+```
+
+Now you see the full 200 GB available (197 GB usable after filesystem overhead).
+
+---
+
+## 3.5 — Backup Strategies
+
+Backups are critical for protecting your data. Here are practical backup strategies for Hetzner Cloud.
+
+### Backup Strategy Overview
+
+**3-2-1 Backup Rule:**
+- **3** copies of your data
+- **2** different storage types
+- **1** copy off-site
+
+**For Hetzner Cloud, this means:**
+- 1 copy = Production volume (your live data)
+- 1 copy = Volume snapshot (same data center)
+- 1 copy = Downloaded backup or snapshot in different location
+
+### Automated Snapshot Schedule
+
+**Manual approach (for learning):**
+
+Create a simple backup script:
+
+```bash{{ copy }}
+#!/bin/bash
+# Daily volume snapshot script
+
+VOLUME_NAME="my-data-volume"
+DATE=$(date +%Y-%m-%d)
+DESCRIPTION="daily-backup-${DATE}"
+
+# Create snapshot
+hcloud volume create-snapshot $VOLUME_NAME --description "$DESCRIPTION"
+
+# Delete snapshots older than 7 days
+# (You'd need to list and filter snapshots - more advanced)
+echo "Snapshot created: $DESCRIPTION"
+```
+
+Save as `/root/backup-volume.sh`:
+
+```bash{{ execute }}
+sudo nano /root/backup-volume.sh
+# Paste the script above
+# Save with Ctrl+O, exit with Ctrl+X
+
+# Make executable
+sudo chmod +x /root/backup-volume.sh
+```
+
+**Schedule with cron:**
+
+**What is cron?**
+- A time-based job scheduler in Linux
+- Runs commands automatically at specified times
+- Perfect for automated backups
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add this line to run backup daily at 2 AM:
+
+```
+0 2 * * * /root/backup-volume.sh
+```
+
+**Cron syntax explained:**
+```
+0 2 * * *
+│ │ │ │ │
+│ │ │ │ └─ Day of week (0-7, 0 and 7 are Sunday)
+│ │ │ └─── Month (1-12)
+│ │ └───── Day of month (1-31)
+│ └─────── Hour (0-23)
+└───────── Minute (0-59)
+```
+
+Examples:
+- `0 2 * * *` = Every day at 2:00 AM
+- `0 */6 * * *` = Every 6 hours
+- `0 0 * * 0` = Every Sunday at midnight
+
+### Backup Best Practices
+
+**1. Test your backups:**
+- Regularly restore from snapshots to verify they work
+- A backup you can't restore is useless
+
+**2. Retention policy:**
+- Keep daily backups for 7 days
+- Keep weekly backups for 4 weeks
+- Keep monthly backups for 12 months
+- Delete old backups to save costs
+
+**3. Monitor backup status:**
+- Check that snapshots are being created
+- Alert if backup fails
+
+**4. Document restore procedures:**
+- Write down step-by-step restore instructions
+- Practice restoring in non-emergency situations
+
+**5. Multiple locations:**
+- For critical data, replicate to different data center
+- Use `rsync` to copy data to volume in different location
+
+### Example: Cross-Location Backup
+
+**Scenario:** Your production volume is in Ashburn. You want a backup copy in Hillsboro for disaster recovery.
+
+**Step 1: Create volume in Hillsboro**
+
+```bash{{ copy }}
+hcloud volume create --name backup-volume-hil --size 100 --location hil
+```
+
+**Step 2: Create server in Hillsboro (temporary)**
+
+```bash{{ copy }}
+hcloud server create --name backup-server --type cpx11 --image ubuntu-24.04 --location hil
+hcloud volume attach backup-volume-hil backup-server
+```
+
+**Step 3: Use rsync to copy data**
+
+From your Ashburn server:
+
+```bash{{ copy }}
+# On backup server (Hillsboro), mount volume
+ssh root@backup-server-ip
+sudo mkdir -p /mnt/backup
+sudo mount /dev/sdb /mnt/backup
+
+# From production server (Ashburn), sync data
+rsync -avz /mnt/data/ root@backup-server-ip:/mnt/backup/
+```
+
+**What is rsync?**
+- **rsync** = "remote sync"
+- Efficiently copies files between locations
+- Only transfers changed files (fast incremental backups)
+- `-a` = archive mode (preserves permissions, timestamps)
+- `-v` = verbose (shows progress)
+- `-z` = compress during transfer
+
+**Step 4: Schedule regular syncs**
+
+Add to crontab:
+
+```
+0 3 * * * rsync -avz /mnt/data/ root@backup-server-ip:/mnt/backup/
+```
+
+**Step 5: Delete temporary server (keep volume)**
+
+```bash{{ copy }}
+hcloud server delete backup-server
+```
+
+The volume remains in Hillsboro with your backup data. You only pay for the volume (~$4.90/month for 100 GB), not the server.
+
+### Calculating Backup Costs
+
+**Example setup:**
+- Production volume: 200 GB in Ashburn
+- Daily snapshots: 7 retained
+- Weekly snapshots: 4 retained
+- Monthly snapshots: 12 retained
+- Cross-location backup: 200 GB volume in Hillsboro
+
+**Costs:**
+- Production volume: 200 GB × $0.049 = $9.80/month
+- Daily snapshots: 7 × 200 GB × $0.012 = $16.80/month
+- Weekly snapshots: 4 × 200 GB × $0.012 = $9.60/month
+- Monthly snapshots: 12 × 200 GB × $0.012 = $28.80/month
+- Cross-location backup: 200 GB × $0.049 = $9.80/month
+
+**Total: $74.80/month for comprehensive backup strategy**
+
+This might seem expensive, but compare to the cost of losing your data!
+
+**Cost optimization:**
+- Reduce snapshot retention (e.g., 3 daily, 2 weekly, 6 monthly)
+- Smaller cross-location backup (100 GB instead of 200 GB)
+- Use compression before syncing
+
+---
+
+## 3.6 — Troubleshooting Common Issues
+
+### Issue: Volume not showing up after attach
+
+**Symptoms:**
+- `hcloud volume attach` succeeds
+- `lsblk` doesn't show the volume
+
+**Solution:**
+
+```bash{{ execute }}
+# Rescan SCSI bus to detect new devices
+echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
+
+# Check again
+lsblk
+```
+
+### Issue: Can't unmount volume (device is busy)
+
+**Symptoms:**
+```
+umount: /mnt/data: target is busy.
+```
+
+**Solution:**
+
+```bash{{ execute }}
+# Find what's using the volume
+sudo lsof +f -- /mnt/data
+
+# Example output:
+# COMMAND   PID USER   FD   TYPE DEVICE SIZE/OFF NODE NAME
+# bash    12345 root  cwd    DIR  253,1     4096  128 /mnt/data
+
+# The process with PID 12345 is using the volume
+# Either:
+# 1. Exit that process/terminal
+# 2. Navigate out of that directory
+# 3. Kill the process (careful!)
+sudo kill 12345
+
+# Try unmounting again
+sudo umount /mnt/data
+```
+
+### Issue: Volume shows as read-only
+
+**Symptoms:**
+- Can't write files to volume
+- Errors like "Read-only file system"
+
+**Possible causes:**
+1. Filesystem errors detected, mounted read-only for safety
+2. Physical issues with volume
+
+**Solution:**
+
+```bash{{ execute }}
+# Unmount the volume
+sudo umount /mnt/data
+
+# Check and repair filesystem
+sudo fsck -y /dev/sdb
+
+# Mount again
+sudo mount /dev/sdb /mnt/data
+```
+
+**What is fsck?**
+- **fsck** = "file system check"
+- Scans and repairs filesystem errors
+- `-y` = automatically answer "yes" to repair prompts
+
+### Issue: Lost data after server reboot
+
+**Symptoms:**
+- Volume not mounted after reboot
+- Data still exists but not accessible
+
+**Cause:**
+- Volume not in `/etc/fstab`
+- Manual mount didn't persist
+
+**Solution:**
+
+```bash{{ execute }}
+# Check if volume is attached
+lsblk
+
+# If attached but not mounted:
+sudo mount /dev/sdb /mnt/data
+
+# Add to /etc/fstab to make permanent (see section 3.3)
+```
+
+### Issue: Can't resize filesystem after volume resize
+
+**Symptoms:**
+- Resized volume to 200 GB
+- `df -h` still shows 100 GB
+
+**Solution:**
+
+```bash{{ execute }}
+# For ext4 filesystems
+sudo resize2fs /dev/sdb
+
+# For xfs filesystems
+sudo xfs_growfs /mnt/data
+```
+
+### Issue: Snapshot restore to different location fails
+
+**Symptoms:**
+- Can't create volume from snapshot in different data center
+
+**Cause:**
+- Snapshots are location-specific
+- Can only restore in same location as original volume
+
+**Solution:**
+- Create volume from snapshot in original location
+- Attach to temporary server
+- Use `rsync` to copy to volume in different location
+
+---
+
+## Lab 3: Hands-On Volume Management
+
+**Time:** 45-60 minutes
+**Cost:** ~$0.15-0.20 (if you delete resources immediately after)
+
+### Lab Objectives
+
+By the end of this lab, you will:
+
+1. Create a 200 GB volume in Ashburn
+2. Attach it to a server and format it with ext4
+3. Mount the volume and create test data
+4. Create a snapshot of the volume
+5. Detach the volume from the first server
+6. Attach it to a second server and verify data is intact
+7. Resize the volume and expand the filesystem
+8. Clean up resources
+
+### Lab Setup
+
+**Prerequisites:**
+- Hetzner Cloud account with CLI configured (from Module 0)
+- At least ~$10-15 in account credit
+
+**Resources you'll create:**
+- 2 × CPX11 servers in Ashburn (~$0.007/hour each)
+- 1 × 200 GB volume (~$0.013/hour)
+- 1 × Volume snapshot (~$0.003/hour)
+
+### Step 1: Create Two Servers
+
+We'll create two servers to practice moving a volume between them.
+
+```bash{{ copy }}
+# Create first server
+hcloud server create \
+  --name data-server-1 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key your-key-name
+
+# Create second server
+hcloud server create \
+  --name data-server-2 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key your-key-name
+```
+
+Wait for servers to finish creating (30-60 seconds).
+
+**Get server IPs:**
+
+```bash{{ execute }}
+hcloud server list
+```
+
+Note the IP addresses of both servers.
+
+### Step 2: Create and Attach Volume
+
+```bash{{ copy }}
+# Create 200 GB volume
+hcloud volume create \
+  --name lab-data-volume \
+  --size 200 \
+  --location ash
+
+# Attach to first server
+hcloud volume attach lab-data-volume data-server-1
+```
+
+### Step 3: Format and Mount the Volume
+
+SSH into the first server:
+
+```bash{{ copy }}
+ssh root@data-server-1-ip
+```
+
+Check that volume is attached:
+
+```bash{{ execute }}
+lsblk
+```
+
+You should see `sdb` with 200 GB.
+
+Format the volume:
+
+```bash{{ execute }}
+sudo mkfs.ext4 /dev/sdb
+```
+
+This takes 30-60 seconds.
+
+Create mount point and mount:
+
+```bash{{ execute }}
+sudo mkdir -p /mnt/data
+sudo mount /dev/sdb /mnt/data
+```
+
+Verify:
+
+```bash{{ execute }}
+df -h | grep /mnt/data
+```
+
+You should see ~197 GB available.
+
+### Step 4: Create Test Data
+
+Let's create some test files to verify data persistence:
+
+```bash{{ execute }}
+# Create directory structure
+sudo mkdir -p /mnt/data/{documents,photos,backups}
+
+# Create test files with content
+echo "Important document" | sudo tee /mnt/data/documents/report.txt
+echo "Photo metadata" | sudo tee /mnt/data/photos/metadata.txt
+echo "Backup data" | sudo tee /mnt/data/backups/backup.txt
+
+# Create a larger file (100 MB) to simulate real data
+sudo dd if=/dev/zero of=/mnt/data/large-file.bin bs=1M count=100
+```
+
+**What is dd?**
+- A tool for copying and converting data
+- `if=/dev/zero` = input from /dev/zero (infinite stream of zeros)
+- `of=/mnt/data/large-file.bin` = output to this file
+- `bs=1M` = block size of 1 megabyte
+- `count=100` = copy 100 blocks (100 MB total)
+
+Check what we created:
+
+```bash{{ execute }}
+ls -lh /mnt/data
+du -sh /mnt/data/*
+```
+
+**Example output:**
+
+```
+total 101M
+drwxr-xr-x 2 root root 4.0K Oct 20 12:00 backups
+drwxr-xr-x 2 root root 4.0K Oct 20 12:00 documents
+-rw-r--r-- 1 root root 100M Oct 20 12:00 large-file.bin
+drwxr-xr-x 2 root root 4.0K Oct 20 12:00 photos
+```
+
+### Step 5: Make Mount Persistent
+
+Add to /etc/fstab so it mounts automatically:
+
+```bash{{ execute }}
+# Get UUID
+sudo blkid /dev/sdb
+```
+
+Copy the UUID.
+
+```bash{{ execute }}
+# Edit fstab
+sudo nano /etc/fstab
+```
+
+Add this line (replace UUID with yours):
+
+```
+UUID=your-uuid-here /mnt/data ext4 defaults,nofail 0 2
+```
+
+Save (`Ctrl+O`, `Enter`) and exit (`Ctrl+X`).
+
+Test:
+
+```bash{{ execute }}
+sudo umount /mnt/data
+sudo mount -a
+df -h | grep /mnt/data
+```
+
+If mounted successfully, your configuration is correct.
+
+### Step 6: Create Volume Snapshot
+
+Before moving the volume, let's create a snapshot:
+
+```bash{{ copy }}
+# Exit SSH
+exit
+
+# Create snapshot
+hcloud volume create-snapshot lab-data-volume --description "lab-snapshot-with-test-data"
+```
+
+Wait for snapshot to complete (1-2 minutes).
+
+Verify:
+
+```bash{{ copy }}
+hcloud volume describe lab-data-volume
+```
+
+You should see your snapshot listed.
+
+### Step 7: Detach and Move to Second Server
+
+Now we'll safely detach the volume and attach it to the second server.
+
+SSH into first server:
+
+```bash{{ copy }}
+ssh root@data-server-1-ip
+```
+
+Unmount the volume:
+
+```bash{{ execute }}
+sudo umount /mnt/data
+```
+
+Exit SSH:
+
+```bash{{ execute }}
+exit
+```
+
+Detach from first server:
+
+```bash{{ copy }}
+hcloud volume detach lab-data-volume
+```
+
+Attach to second server:
+
+```bash{{ copy }}
+hcloud volume attach lab-data-volume data-server-2
+```
+
+### Step 8: Mount on Second Server and Verify Data
+
+SSH into second server:
+
+```bash{{ copy }}
+ssh root@data-server-2-ip
+```
+
+Check that volume is attached:
+
+```bash{{ execute }}
+lsblk
+```
+
+Create mount point and mount:
+
+```bash{{ execute }}
+sudo mkdir -p /mnt/data
+sudo mount /dev/sdb /mnt/data
+```
+
+**Verify all data is intact:**
+
+```bash{{ execute }}
+ls -lh /mnt/data
+cat /mnt/data/documents/report.txt
+cat /mnt/data/photos/metadata.txt
+du -sh /mnt/data/large-file.bin
+```
+
+You should see all your files exactly as you created them! This demonstrates that volumes are portable between servers.
+
+### Step 9: Resize the Volume
+
+Let's resize from 200 GB to 300 GB.
+
+First, unmount:
+
+```bash{{ execute }}
+sudo umount /mnt/data
+exit
+```
+
+Detach volume:
+
+```bash{{ copy }}
+hcloud volume detach lab-data-volume
+```
+
+Resize:
+
+```bash{{ copy }}
+hcloud volume resize lab-data-volume --size 300
+```
+
+Reattach:
+
+```bash{{ copy }}
+hcloud volume attach lab-data-volume data-server-2
+```
+
+SSH back in:
+
+```bash{{ copy }}
+ssh root@data-server-2-ip
+```
+
+Mount and check size:
+
+```bash{{ execute }}
+sudo mount /dev/sdb /mnt/data
+df -h | grep /mnt/data
+```
+
+You'll see it still shows ~197 GB. We need to expand the filesystem.
+
+Expand filesystem:
+
+```bash{{ execute }}
+sudo resize2fs /dev/sdb
+```
+
+Check again:
+
+```bash{{ execute }}
+df -h | grep /mnt/data
+```
+
+Now you should see ~296 GB available!
+
+Verify data is still intact:
+
+```bash{{ execute }}
+ls -lh /mnt/data
+cat /mnt/data/documents/report.txt
+```
+
+### Step 10: Cleanup
+
+Exit SSH:
+
+```bash{{ execute }}
+exit
+```
+
+Delete all resources to avoid ongoing charges:
+
+```bash{{ copy }}
+# Detach volume first
+hcloud volume detach lab-data-volume
+
+# Delete volume and its snapshots
+hcloud volume delete lab-data-volume
+
+# Delete servers
+hcloud server delete data-server-1
+hcloud server delete data-server-2
+```
+
+Confirm each deletion when prompted.
+
+Verify everything is deleted:
+
+```bash{{ execute }}
+hcloud server list
+hcloud volume list
+```
+
+Both should show empty (or only your other resources).
+
+---
+
+## Lab 3 Summary
+
+**What you accomplished:**
+
+✅ Created a 200 GB volume
+✅ Formatted with ext4 filesystem
+✅ Mounted and created test data
+✅ Made mount persistent with /etc/fstab
+✅ Created a volume snapshot
+✅ Moved volume between two servers
+✅ Verified data persistence
+✅ Resized volume from 200 GB to 300 GB
+✅ Expanded filesystem to use new space
+✅ Cleaned up all resources
+
+**Key takeaways:**
+- Volumes are portable and persistent
+- Data survives server deletions
+- Snapshots provide point-in-time backups
+- Volumes can be resized (grown, not shrunk)
+- Always unmount before detaching
+
+---
+
+## Module 3 Quiz
+
+Test your understanding:
+
+**1. What's the main difference between root volumes and attached volumes?**
+
+a) Root volumes are faster
+b) Root volumes are deleted when server is deleted, attached volumes persist
+c) Root volumes are more expensive
+d) There is no difference
+
+<details>
+<summary>Answer</summary>
+b) Root volumes are deleted when server is deleted, attached volumes persist independently
+</details>
+
+**2. What command formats a volume with ext4 filesystem?**
+
+a) `sudo format /dev/sdb ext4`
+b) `sudo mkfs.ext4 /dev/sdb`
+c) `sudo ext4 /dev/sdb`
+d) `sudo create-fs /dev/sdb`
+
+<details>
+<summary>Answer</summary>
+b) `sudo mkfs.ext4 /dev/sdb`
+</details>
+
+**3. Why must you unmount a volume before detaching it?**
+
+a) To make detachment faster
+b) To prevent data corruption
+c) It's not actually necessary
+d) To save money
+
+<details>
+<summary>Answer</summary>
+b) To prevent data corruption - unmounting flushes all pending writes to disk
+</details>
+
+**4. What file makes mounts persistent across reboots?**
+
+a) `/etc/mounts`
+b) `/etc/volumes`
+c) `/etc/fstab`
+d) `/etc/filesystem`
+
+<details>
+<summary>Answer</summary>
+c) `/etc/fstab`
+</details>
+
+**5. Can you shrink a volume from 200 GB to 100 GB?**
+
+a) Yes, using `hcloud volume resize`
+b) Yes, but only via the Console
+c) No, volumes can only grow, not shrink
+d) Yes, but you must format it first
+
+<details>
+<summary>Answer</summary>
+c) No, volumes can only grow, not shrink
+</details>
+
+**6. After resizing a volume, what command expands an ext4 filesystem?**
+
+a) `sudo expand /dev/sdb`
+b) `sudo resize2fs /dev/sdb`
+c) `sudo grow-fs /dev/sdb`
+d) `sudo extend /dev/sdb`
+
+<details>
+<summary>Answer</summary>
+b) `sudo resize2fs /dev/sdb`
+</details>
+
+**7. What's the approximate cost of a 100 GB volume per month?**
+
+a) $1.00
+b) $2.50
+c) $4.90
+d) $10.00
+
+<details>
+<summary>Answer</summary>
+c) $4.90 (100 GB × $0.049/GB)
+</details>
+
+**8. Can you attach one volume to two servers simultaneously?**
+
+a) Yes, for read-only access
+b) Yes, if they're in the same location
+c) No, volumes can only be attached to one server at a time
+d) Yes, but only via CLI
+
+<details>
+<summary>Answer</summary>
+c) No, volumes can only be attached to one server at a time
+</details>
+
+---
+
+## Troubleshooting Guide
+
+### Symptom: `lsblk` doesn't show attached volume
+
+**Possible causes:**
+- Volume not actually attached
+- Server needs SCSI rescan
+
+**Solutions:**
+
+```bash{{ copy }}
+# Verify volume is attached
+hcloud volume describe your-volume-name
+
+# If attached, rescan SCSI bus
+echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
+lsblk
+```
+
+### Symptom: Mount fails with "wrong fs type"
+
+**Error example:**
+```
+mount: /mnt/data: wrong fs type, bad option, bad superblock on /dev/sdb
+```
+
+**Possible causes:**
+- Volume not formatted
+- Volume formatted with different filesystem
+
+**Solutions:**
+
+```bash{{ execute }}
+# Check if volume is formatted
+sudo blkid /dev/sdb
+
+# If no output, volume is not formatted
+sudo mkfs.ext4 /dev/sdb
+
+# If output shows different filesystem (e.g., xfs), either:
+# 1. Use correct filesystem type in mount command
+sudo mount -t xfs /dev/sdb /mnt/data
+
+# 2. Reformat (WARNING: destroys data)
+sudo mkfs.ext4 /dev/sdb
+```
+
+### Symptom: Automatic mount fails after reboot
+
+**Solutions:**
+
+```bash{{ execute }}
+# Check /etc/fstab for errors
+cat /etc/fstab
+
+# Test fstab without rebooting
+sudo mount -a
+
+# Check system logs for mount errors
+sudo journalctl -u systemd-fsck@dev-sdb.service
+```
+
+Common fstab mistakes:
+- Wrong UUID
+- Wrong mount point path
+- Missing `nofail` option (causes boot to fail if volume detached)
+
+### Symptom: "No space left on device" but df shows space available
+
+**Possible causes:**
+- Out of inodes (filesystem metadata for files)
+- Wrong partition mounted
+
+**Solutions:**
+
+```bash{{ execute }}
+# Check inode usage
+df -i
+
+# If inodes are 100% used:
+# Find directories with many files
+sudo find / -xdev -printf '%h\n' | sort | uniq -c | sort -k 1 -n
+
+# Delete unnecessary files (logs, temp files, etc.)
+```
+
+---
+
+## Additional Resources
+
+**Official Documentation:**
+- [Hetzner Volumes Docs](https://docs.hetzner.com/cloud/volumes/overview/)
+- [Hetzner CLI Volume Commands](https://github.com/hetznercloud/cli)
+
+**Linux Filesystem Resources:**
+- [Ubuntu ext4 Documentation](https://help.ubuntu.com/community/FileSystemAdministration)
+- [Understanding fstab](https://help.ubuntu.com/community/Fstab)
+
+**Backup Tools:**
+- [rsync Tutorial](https://www.digitalocean.com/community/tutorials/how-to-use-rsync-to-sync-local-and-remote-directories)
+- [Cron Tutorial](https://www.digitalocean.com/community/tutorials/how-to-use-cron-to-automate-tasks-ubuntu-1804)
+
+**Community:**
+- [Hetzner Community Forum](https://community.hetzner.com/)
+
+---
+
+## What's Next?
+
+Congratulations! You now understand how to manage persistent storage on Hetzner Cloud.
+
+**You learned:**
+- Root volumes vs attached volumes
+- Creating, formatting, and mounting volumes
+- Volume snapshots and resizing
+- Moving volumes between servers
+- Backup strategies and automation
+
+**Next Module:** [Module 4 - Security & Access Control](./module-04-security.mdcl)
+
+In Module 4, you'll learn how to properly secure your infrastructure with SSH keys, firewalls, and server hardening techniques.
+
+---
+
+**Questions or issues?** Check the [troubleshooting guide](#troubleshooting-guide) above or visit the [Hetzner Community Forum](https://community.hetzner.com/).

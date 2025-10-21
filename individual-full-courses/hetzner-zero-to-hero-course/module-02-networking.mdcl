@@ -1,0 +1,1348 @@
+# Module 2: Networking Essentials
+
+Learn to build secure, flexible networking topologies on Hetzner Cloud.
+
+`This module covers IP addresses, private networks, floating IPs, firewalls, and load balancers` {{ note }}
+
+---
+
+## Module Overview
+
+**Time:** 3 hours
+
+**What you'll learn:**
+- Understanding IPv4 and IPv6 addresses
+- Using Floating IPs for high availability
+- Creating private networks for server-to-server communication
+- Configuring firewall rules
+- Load balancer basics
+
+**What you'll build:**
+- Private network with multiple servers
+- Floating IP for failover
+- Firewall rules for security
+- Working multi-server architecture
+
+**Cost:** $8-12 (remember to delete resources after!)
+
+---
+
+## 2.1: Primary IPs (IPv4/IPv6)
+
+Every server gets IP addresses for internet connectivity.
+
+### What is an IP Address?
+
+**IP Address** = A unique identifier for a computer on a network (like a phone number for computers)
+
+**Think of it like:**
+- **IPv4**: Like a phone number (example: 95.216.123.45)
+- **IPv6**: Like a really long phone number (example: 2a01:4f8:1234:5678::1)
+
+### IPv4 Addresses
+
+**IPv4** = Internet Protocol version 4 (the standard we've used for decades)
+
+**Format:** Four numbers separated by dots
+- Example: `95.216.123.45`
+- Each number is 0-255
+- Total: About 4.3 billion possible addresses
+
+**Problem:** We're running out! (That's why IPv6 was created)
+
+**On Hetzner:**
+- Every server gets **1 free IPv4 address**
+- Additional IPv4 addresses cost extra (IPv4 is scarce!)
+- Public IPv4 (accessible from anywhere on the internet)
+
+### IPv6 Addresses
+
+**IPv6** = Internet Protocol version 6 (the newer standard)
+
+**Format:** Eight groups of hexadecimal numbers
+- Example: `2a01:4f8:c2c:1234::1`
+- Much longer than IPv4
+- Total: 340 undecillion possible addresses (practically unlimited!)
+
+**On Hetzner:**
+- Every server gets a **free /64 IPv6 subnet**
+- That's 18,446,744,073,709,551,616 addresses!
+- More than enough for any use case
+
+### Primary IP vs Additional IPs
+
+**Primary IP:**
+- Automatically assigned when you create a server
+- Included in server price (free!)
+- Can be IPv4 and/or IPv6
+- Tied to the server (deleted when server is deleted)
+
+**Additional IPs:**
+- You can purchase more if needed
+- IPv4: ~$1/month each (expensive because IPv4 is scarce)
+- IPv6: Usually included
+- Useful for multiple services on one server
+
+### Viewing Your Server's IPs
+
+#### Via Console
+
+1. Go to your server in the console
+2. See "Networking" section
+3. View assigned IPv4 and IPv6
+
+#### Via CLI
+
+`hcloud server describe my-server` {{ execute }}
+
+Look for:
+```
+IPv4: 95.216.123.45
+IPv6: 2a01:4f8:c2c:1234::1
+IPv6 Network: 2a01:4f8:c2c:1234::/64
+```
+
+### IP Address Costs
+
+**What's included (FREE):**
+- 1 IPv4 address per server
+- 1 IPv6 /64 subnet per server
+- Incoming traffic (unlimited)
+- Outgoing traffic (20 TB per server per month)
+
+**What costs extra:**
+- Additional IPv4 addresses: ~$1.19/month each
+- Traffic over 20 TB: ~$1.19 per TB
+- Floating IPs (covered next section)
+
+### When Do You Need More IPs?
+
+**Most users DON'T need extra IPs!**
+
+You can:
+- Run multiple websites on one IP (using reverse proxy)
+- Run multiple services on different ports
+- Use domain names instead of IPs
+
+**You might need extra IPs for:**
+- Running multiple SSL certificates (though SNI solves this now)
+- Some legacy applications that require dedicated IPs
+- Specific compliance requirements
+
+---
+
+## 2.2: Floating IPs for High Availability
+
+Floating IPs enable high availability and easy failover.
+
+### What is a Floating IP?
+
+**Floating IP** = An IP address that can be moved between servers instantly
+
+**Normal IP (Primary):**
+```
+Server A: 95.216.123.45 (stuck on Server A)
+Server B: 95.216.123.46 (stuck on Server B)
+
+If Server A crashes: IP 95.216.123.45 is unreachable!
+```
+
+**Floating IP:**
+```
+Server A: has floating IP 95.216.200.10
+Server B: standby
+
+If Server A crashes:
+→ Move floating IP to Server B (takes 1-2 seconds!)
+→ Users connect to 95.216.200.10 (now on Server B)
+→ Zero downtime!
+```
+
+### How Floating IPs Work
+
+1. You create a Floating IP
+2. You assign it to a server
+3. The server configures the IP on its network interface
+4. Users connect to the Floating IP
+5. If needed, you reassign it to another server (instant!)
+
+**Use cases:**
+- **High availability:** Quick failover if primary server fails
+- **Zero-downtime maintenance:** Move IP to backup, update primary, move back
+- **Database failover:** Master fails, promote standby, move IP
+- **Blue-green deployments:** Switch traffic between versions
+
+### Floating IP Types
+
+**IPv4 Floating IP:**
+- Costs: ~$1.19/month
+- Can be moved between servers
+- Works like a regular IPv4 address
+
+**IPv6 Floating IP:**
+- Costs: ~$1.19/month
+- Actually a /64 subnet (lots of IPs!)
+- Less common to use
+
+**For this course:** We'll use IPv4 Floating IPs
+
+### Creating a Floating IP
+
+#### Via Console
+
+1. Go to "Floating IPs" (left sidebar)
+2. Click "Create Floating IP"
+3. **Type:** IPv4
+4. **Location:** Ashburn, VA (must match server location!)
+5. **Name:** "failover-ip"
+6. **Description:** (optional) "IP for high availability"
+7. **Assign to server:** (optional) Select a server or leave unassigned
+8. Click "Create Floating IP"
+
+**Result:** Floating IP created! Cost: ~$1.19/month
+
+#### Via CLI
+
+`hcloud floating-ip create --type ipv4 --home-location ash --name failover-ip` {{ execute }}
+
+Output shows the IP address:
+```
+FloatingIP 123456 created
+IPv4: 95.216.200.10
+```
+
+**Save this IP address!**
+
+### Assigning a Floating IP to a Server
+
+Once created, assign it to a server.
+
+#### Via Console
+
+1. Go to "Floating IPs"
+2. Click on your Floating IP
+3. Click "Assign to Server" button
+4. Select the server
+5. Click "Assign"
+
+**Server now has the Floating IP!**
+
+#### Via CLI
+
+`hcloud floating-ip assign 123456 my-server` {{ execute }}
+
+Replace `123456` with your Floating IP ID.
+
+### Configuring the Floating IP on the Server
+
+**Important:** Just assigning isn't enough - you must configure it on the server!
+
+SSH into your server:
+
+`ssh root@YOUR_SERVER_IP` {{ copy }}
+
+**Check current network configuration:**
+
+`ip addr show` {{ execute }}
+
+You'll see your primary IP but NOT the floating IP yet.
+
+**Add the Floating IP:**
+
+On Ubuntu 24.04, edit netplan configuration:
+
+`nano /etc/netplan/60-floating-ip.yaml` {{ execute }}
+
+Add this (replace FLOATING_IP with your actual IP):
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - FLOATING_IP/32
+```
+
+Save and exit.
+
+**Apply the configuration:**
+
+`netplan apply` {{ execute }}
+
+**Verify it's configured:**
+
+`ip addr show eth0` {{ execute }}
+
+You should now see your Floating IP listed!
+
+**Test connectivity:**
+
+From your local computer:
+
+`ping FLOATING_IP` {{ copy }}
+
+Should respond!
+
+### Moving a Floating IP to Another Server
+
+This is the magic - instant failover!
+
+**Scenario:** Server A has the Floating IP, we need to move it to Server B.
+
+#### Via Console
+
+1. Go to "Floating IPs"
+2. Click your Floating IP
+3. Click "Assign to Server"
+4. Select Server B
+5. Click "Assign"
+
+**Takes 1-2 seconds!**
+
+**Now configure on Server B** (same netplan steps as above)
+
+#### Via CLI
+
+`hcloud floating-ip assign 123456 server-b` {{ execute }}
+
+**Instant reassignment!**
+
+### Floating IP Best Practices
+
+**1. Always in the same location**
+- Floating IP and servers must be in same data center
+- Can't move a Floating IP from Ashburn to Hillsboro
+
+**2. Automate failover**
+- Use health checks to detect failures
+- Automatically reassign Floating IP if primary fails
+- Tools: keepalived, Pacemaker, custom scripts
+
+**3. Configure on both servers**
+- Set up netplan on all potential targets
+- Faster failover when needed
+
+**4. Test failover regularly**
+- Don't wait for a real emergency
+- Practice moving the IP
+- Ensure your automation works
+
+**5. DNS considerations**
+- Point DNS to Floating IP, not primary IP
+- Users always connect to Floating IP
+- Server IP changes don't affect users
+
+---
+
+## 2.3: Private Networks
+
+Private networks enable secure server-to-server communication.
+
+### What is a Private Network?
+
+**Private Network** = An isolated network for your servers to communicate securely
+
+**Without private network:**
+```
+Server A (95.216.1.10) ←→ Internet ←→ Server B (95.216.1.20)
+- Communication goes over public internet
+- Uses your traffic allowance
+- Can be intercepted (need encryption)
+- Slower
+```
+
+**With private network:**
+```
+Server A (10.0.0.2) ←→ Private Network ←→ Server B (10.0.0.3)
+- Direct communication (no internet)
+- FREE (doesn't count toward traffic)
+- Isolated (other customers can't access)
+- Faster (low latency)
+- More secure
+```
+
+### Private Network Use Cases
+
+**Database servers:**
+- Web server connects to database via private network
+- Database not exposed to internet
+- Faster queries
+
+**Multi-tier applications:**
+```
+Load Balancer (public IP)
+    ↓
+App Servers (private network)
+    ↓
+Database Server (private network only)
+```
+
+**Microservices:**
+- Services communicate via private network
+- Only API gateway exposed publicly
+
+**Backup servers:**
+- Backup server on private network only
+- Primary server sends backups via private network
+
+### Private Network Basics
+
+**IP Range (CIDR):**
+- You choose a private IP range
+- Example: `10.0.0.0/16`
+- This gives you 65,536 IPs (10.0.0.0 to 10.0.255.255)
+
+**Subnet:**
+- Servers attach to subnets within the network
+- Example subnet: `10.0.1.0/24` (256 IPs)
+
+**Common private IP ranges:**
+- `10.0.0.0/8` (huge, 16 million IPs)
+- `172.16.0.0/12` (medium, 1 million IPs)
+- `192.168.0.0/16` (common for home networks, 65,536 IPs)
+
+**For Hetzner:** Use `10.0.0.0/16` - gives you plenty of IPs
+
+### Creating a Private Network
+
+#### Via Console
+
+1. Go to "Networks" (left sidebar)
+2. Click "Create Network"
+3. **Name:** "private-net"
+4. **IP Range:** `10.0.0.0/16`
+5. Click "Create Network"
+
+**Network created!**
+
+Now create a subnet:
+
+1. Click on the network you just created
+2. Click "Add Subnet"
+3. **Type:** Cloud
+4. **Network Zone:** us-east (for Ashburn servers)
+5. **IP Range:** `10.0.1.0/24`
+6. Click "Create Subnet"
+
+**Subnet created!** Cost: FREE!
+
+#### Via CLI
+
+**Create network:**
+
+`hcloud network create --name private-net --ip-range 10.0.0.0/16` {{ execute }}
+
+**Create subnet:**
+
+`hcloud network add-subnet private-net --type cloud --network-zone us-east --ip-range 10.0.1.0/24` {{ execute }}
+
+**List networks:**
+
+`hcloud network list` {{ execute }}
+
+### Attaching Servers to a Private Network
+
+Once network is created, attach servers to it.
+
+#### Via Console
+
+1. Go to your server details
+2. Click "Networking" tab
+3. Scroll to "Private Networks" section
+4. Click "Attach to Private Network"
+5. Select your network
+6. **IP Address:** (leave auto, or specify like 10.0.1.10)
+7. Click "Attach"
+
+**Server is now attached!**
+
+Repeat for other servers.
+
+#### Via CLI
+
+`hcloud server attach-to-network my-server --network private-net --ip 10.0.1.10` {{ execute }}
+
+**Attach another server:**
+
+`hcloud server attach-to-network my-server-2 --network private-net --ip 10.0.1.11` {{ execute }}
+
+### Configuring Private Network on Servers
+
+After attaching, configure the network on the server.
+
+**SSH into server:**
+
+`ssh root@SERVER_IP` {{ copy }}
+
+**Check network interfaces:**
+
+`ip addr show` {{ execute }}
+
+You should see a new interface (ens10 or similar) with your private IP.
+
+**If not configured automatically, configure manually:**
+
+Create netplan config:
+
+`nano /etc/netplan/61-private-network.yaml` {{ execute }}
+
+Add:
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    ens10:
+      addresses:
+        - 10.0.1.10/24
+```
+
+**Apply:**
+
+`netplan apply` {{ execute }}
+
+**Verify:**
+
+`ip addr show ens10` {{ execute }}
+
+Should show: `10.0.1.10/24`
+
+### Testing Private Network
+
+From Server A (10.0.1.10), ping Server B (10.0.1.11):
+
+`ping 10.0.1.11` {{ execute }}
+
+Should work! Servers are communicating via private network!
+
+**Check routing:**
+
+`ip route` {{ execute }}
+
+You should see route for `10.0.0.0/16` via the private interface.
+
+### Private Network vs Public
+
+**Let's test the difference!**
+
+**Test 1: Speed via public internet**
+
+From Server A, test to Server B's PUBLIC IP:
+
+`wget http://PUBLIC_IP/test.txt -O /dev/null` {{ copy }}
+
+Note the speed (e.g., 50 MB/s)
+
+**Test 2: Speed via private network**
+
+From Server A, test to Server B's PRIVATE IP:
+
+`wget http://10.0.1.11/test.txt -O /dev/null` {{ copy }}
+
+Note the speed (e.g., 200-500 MB/s)
+
+**Private network is much faster!** ⚡
+
+### Private Network Best Practices
+
+**1. Use for internal communication**
+- Database connections
+- Service-to-service calls
+- File transfers between servers
+- Backups
+
+**2. Don't expose databases publicly**
+- Database only listens on private IP
+- Application servers connect via private network
+- Much more secure!
+
+**3. Plan your IP ranges**
+- Use consistent scheme (e.g., .10-.19 for web servers, .20-.29 for databases)
+- Document which IPs are used
+- Leave room for growth
+
+**4. Multiple subnets for organization**
+```
+10.0.1.0/24 - Web servers
+10.0.2.0/24 - Application servers
+10.0.3.0/24 - Database servers
+10.0.4.0/24 - Monitoring/backup
+```
+
+**5. Security**
+- Private network is isolated
+- But still use firewalls within private network
+- Defense in depth!
+
+---
+
+## 2.4: Firewall Rules
+
+Firewalls control what traffic is allowed to reach your servers.
+
+### What is a Firewall?
+
+**Firewall** = A security system that controls incoming and outgoing network traffic based on rules
+
+**Think of it like:**
+- A bouncer at a club checking IDs
+- Only lets authorized traffic through
+- Blocks everything else
+
+**Without firewall:**
+```
+Internet → Server
+- ALL ports are open
+- Anyone can access SSH (port 22), databases, etc.
+- Very insecure!
+```
+
+**With firewall:**
+```
+Internet → Firewall (checks rules) → Server
+- Only allow HTTP (port 80), HTTPS (port 443)
+- Block SSH from untrusted IPs
+- Drop all other traffic
+- Much more secure!
+```
+
+### Understanding Firewall Rules
+
+A firewall rule has:
+
+**Direction:**
+- **Inbound** (incoming) - Traffic coming TO your server
+- **Outbound** (outgoing) - Traffic leaving FROM your server
+
+**Action:**
+- **Allow** - Let the traffic through
+- **Drop** - Silently reject (no response)
+- **Deny** - Reject and send response
+
+**Protocol:**
+- **TCP** - Most common (HTTP, HTTPS, SSH, databases)
+- **UDP** - DNS, some games/streaming
+- **ICMP** - Ping, diagnostics
+
+**Port:**
+- Numbers 1-65535
+- Common ports: 22 (SSH), 80 (HTTP), 443 (HTTPS), 3306 (MySQL)
+
+**Source:**
+- Specific IP (e.g., 1.2.3.4)
+- IP range (e.g., 1.2.3.0/24)
+- Anywhere (0.0.0.0/0)
+
+### Common Ports to Know
+
+| Port | Service | When to Allow |
+|------|---------|---------------|
+| 22 | SSH | Admin access (limit to your IP!) |
+| 80 | HTTP | Web server (allow publicly) |
+| 443 | HTTPS | Secure web (allow publicly) |
+| 3306 | MySQL/MariaDB | Database (private network only!) |
+| 5432 | PostgreSQL | Database (private network only!) |
+| 6379 | Redis | Cache (private network only!) |
+| 27017 | MongoDB | Database (private network only!) |
+| 25 | SMTP | Email server |
+| 53 | DNS | DNS server |
+
+### Hetzner Cloud Firewalls
+
+Hetzner provides **Cloud Firewalls** = Firewall-as-a-Service
+
+**Benefits:**
+- Applied before traffic reaches server (saves server resources)
+- Can apply one firewall to multiple servers
+- Changes apply instantly
+- Free!
+
+**How it works:**
+1. Create a firewall
+2. Add rules
+3. Apply to servers
+4. Traffic is filtered before reaching server
+
+### Creating a Firewall
+
+#### Via Console
+
+1. Go to "Firewalls" (left sidebar)
+2. Click "Create Firewall"
+3. **Name:** "web-firewall"
+4. **Rules - Inbound:**
+
+Add these rules (click "Add Rule" for each):
+
+**Rule 1: Allow SSH from your IP**
+- Direction: Inbound
+- Source: Your IP (e.g., 1.2.3.4/32)
+- Protocol: TCP
+- Port: 22
+
+**Rule 2: Allow HTTP from anywhere**
+- Direction: Inbound
+- Source: Anywhere (0.0.0.0/0, ::/0)
+- Protocol: TCP
+- Port: 80
+
+**Rule 3: Allow HTTPS from anywhere**
+- Direction: Inbound
+- Source: Anywhere (0.0.0.0/0, ::/0)
+- Protocol: TCP
+- Port: 443
+
+**Rule 4: Allow ICMP (ping)**
+- Direction: Inbound
+- Source: Anywhere
+- Protocol: ICMP
+
+5. **Rules - Outbound:**
+
+**Rule 1: Allow all outbound**
+- Direction: Outbound
+- Destination: Anywhere
+- Protocol: Any
+- Port: Any
+
+6. Click "Create Firewall"
+
+**Firewall created!**
+
+#### Via CLI
+
+`hcloud firewall create --name web-firewall` {{ execute }}
+
+**Add SSH rule (from your IP only):**
+
+`hcloud firewall add-rule web-firewall --direction in --port 22 --protocol tcp --source-ips YOUR_IP/32` {{ execute }}
+
+Replace YOUR_IP with your actual IP. Find it: https://icanhazip.com
+
+**Add HTTP rule:**
+
+`hcloud firewall add-rule web-firewall --direction in --port 80 --protocol tcp --source-ips 0.0.0.0/0 --source-ips ::/0` {{ execute }}
+
+**Add HTTPS rule:**
+
+`hcloud firewall add-rule web-firewall --direction in --port 443 --protocol tcp --source-ips 0.0.0.0/0 --source-ips ::/0` {{ execute }}
+
+**Add ICMP (ping):**
+
+`hcloud firewall add-rule web-firewall --direction in --protocol icmp --source-ips 0.0.0.0/0 --source-ips ::/0` {{ execute }}
+
+**Allow all outbound:**
+
+`hcloud firewall add-rule web-firewall --direction out --protocol tcp --destination-ips 0.0.0.0/0 --destination-ips ::/0` {{ execute }}
+
+### Applying Firewall to Servers
+
+#### Via Console
+
+1. Go to firewall details
+2. Click "Apply to Resources"
+3. Select servers to protect
+4. Click "Apply Firewall"
+
+**Servers are now protected!**
+
+#### Via CLI
+
+`hcloud firewall apply-to-resource web-firewall --type server --server my-server` {{ execute }}
+
+### Testing Your Firewall
+
+**Test 1: SSH should work from your IP**
+
+`ssh root@SERVER_IP` {{ copy }}
+
+Should connect successfully.
+
+**Test 2: SSH blocked from other IPs**
+
+Ask a friend to try SSH from their IP - should be blocked!
+
+Or use a VPN/proxy to test from different IP.
+
+**Test 3: Web traffic works**
+
+`curl http://SERVER_IP` {{ copy }}
+
+Should work (if you have web server running).
+
+**Test 4: Blocked ports**
+
+Try to connect to MySQL (should be blocked):
+
+`telnet SERVER_IP 3306` {{ copy }}
+
+Should timeout or refuse connection.
+
+### Common Firewall Scenarios
+
+**Scenario 1: Web Server**
+
+Allow:
+- Port 22 (SSH) from your IP only
+- Port 80 (HTTP) from anywhere
+- Port 443 (HTTPS) from anywhere
+- ICMP (ping) for monitoring
+
+Block: Everything else
+
+**Scenario 2: Database Server (with app servers)**
+
+Allow:
+- Port 22 (SSH) from your IP only
+- Port 3306 (MySQL) from app server IPs only (e.g., 10.0.1.0/24)
+- ICMP from monitoring server
+
+Block: Everything else (no public access to database!)
+
+**Scenario 3: Internal Service (Private Network Only)**
+
+Allow:
+- Port 22 (SSH) from your IP via public interface
+- All traffic from private network (10.0.0.0/16)
+
+Block: All other public access
+
+### Firewall Best Practices
+
+**1. Default Deny**
+- Start by blocking everything
+- Only allow what's needed
+- "Least privilege" principle
+
+**2. Limit SSH access**
+- NEVER allow SSH from 0.0.0.0/0
+- Restrict to your IP or company VPN
+- Use SSH keys, not passwords
+
+**3. Don't expose databases**
+- Database ports should never be public
+- Use private networks
+- Only allow from application servers
+
+**4. Monitor and log**
+- Check firewall logs regularly
+- Look for suspicious patterns
+- Adjust rules as needed
+
+**5. Test changes carefully**
+- Test before applying to production
+- Have console access in case you lock yourself out
+- Document all rules
+
+**6. Use descriptive names**
+- Name rules clearly (e.g., "allow-http-public")
+- Add comments/descriptions
+- Makes troubleshooting easier
+
+---
+
+## 2.5: Load Balancing Basics
+
+Load Balancers distribute traffic across multiple servers.
+
+### What is a Load Balancer?
+
+**Load Balancer** = A traffic distributor that spreads requests across multiple servers
+
+**Without load balancer:**
+```
+Internet → Single Server
+- Server handles all traffic
+- If server is overloaded: Slow/crashes
+- If server fails: Everything down
+- Single point of failure
+```
+
+**With load balancer:**
+```
+Internet → Load Balancer → Server 1
+                         → Server 2
+                         → Server 3
+- Traffic distributed evenly
+- If one server fails: Others handle traffic
+- Can scale by adding more servers
+- High availability
+```
+
+### Load Balancer Benefits
+
+**High Availability:**
+- If one server fails, LB stops sending traffic to it
+- Other servers continue serving requests
+- No downtime for users
+
+**Scalability:**
+- Add more servers to handle more traffic
+- Remove servers during low traffic
+- Scale horizontally
+
+**Performance:**
+- Distribute load evenly
+- No single server is overwhelmed
+- Better response times
+
+**Maintenance:**
+- Take servers offline for updates
+- Load balancer routes around them
+- Zero-downtime deployments
+
+### Hetzner Load Balancer Features
+
+**What it does:**
+- Distributes HTTP/HTTPS traffic
+- Distributes TCP traffic
+- Health checks (detects failed servers)
+- SSL termination (handles HTTPS for you)
+- Session persistence (sticky sessions)
+
+**Pricing:**
+- LB-11: €5.83/month (~$6.50) + traffic costs
+- Includes 20 TB traffic
+- Can handle thousands of connections
+
+### Load Balancer Algorithms
+
+**Round Robin** (default)
+- Requests distributed in order
+- Server 1 → Server 2 → Server 3 → Server 1 → ...
+- Simple and fair
+
+**Least Connections**
+- Send to server with fewest active connections
+- Good for long-running requests
+- More intelligent distribution
+
+**Sticky Sessions**
+- User always goes to same server
+- Based on cookie or IP
+- Important for sessions
+
+### When Do You Need a Load Balancer?
+
+**You probably need one if:**
+- Traffic exceeds one server's capacity
+- You need high availability (can't afford downtime)
+- Running multiple backend servers
+- Want zero-downtime deployments
+
+**You might NOT need one if:**
+- Low traffic (one server is plenty)
+- Can tolerate brief downtime
+- Tight budget
+- Simple application
+
+**For this course:** We'll create a load balancer in the lab to understand how it works!
+
+### Load Balancer vs Floating IP
+
+**Floating IP:**
+- Manual failover (you move it)
+- One server active at a time
+- Cheap (~$1.19/month)
+- Good for: Simple HA, databases
+
+**Load Balancer:**
+- Automatic failover
+- Multiple servers active simultaneously
+- More expensive (~$6.50/month)
+- Good for: Web applications, APIs, high traffic
+
+---
+
+## Lab 2: Build a Multi-Server Network
+
+Time to put everything together!
+
+### Lab Objectives
+
+By the end of this lab, you will:
+- Create a private network
+- Deploy multiple servers on private network
+- Create and assign a Floating IP
+- Configure firewall rules
+- Test connectivity between servers
+
+### Part 1: Create Private Network
+
+**Create network via CLI:**
+
+`hcloud network create --name lab-network --ip-range 10.0.0.0/16` {{ execute }}
+
+**Add subnet:**
+
+`hcloud network add-subnet lab-network --type cloud --network-zone us-east --ip-range 10.0.1.0/24` {{ execute }}
+
+**Verify:**
+
+`hcloud network describe lab-network` {{ execute }}
+
+### Part 2: Deploy Two Servers
+
+**Create Server 1:**
+
+`hcloud server create --name web-1 --type cpx11 --image ubuntu-24.04 --location ash --network lab-network` {{ execute }}
+
+Note the IP address.
+
+**Create Server 2:**
+
+`hcloud server create --name web-2 --type cpx11 --image ubuntu-24.04 --location ash --network lab-network` {{ execute }}
+
+Note the IP address.
+
+**Wait for both to finish creating (1-2 minutes).**
+
+**List servers:**
+
+`hcloud server list` {{ execute }}
+
+Both should show "running".
+
+### Part 3: Configure Private Network on Servers
+
+**SSH into web-1:**
+
+`ssh root@WEB1_PUBLIC_IP` {{ copy }}
+
+**Check interfaces:**
+
+`ip addr show` {{ execute }}
+
+You should see ens10 with IP 10.0.1.2 (or similar).
+
+**If not configured, create netplan config:**
+
+`nano /etc/netplan/61-private.yaml` {{ execute }}
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    ens10:
+      addresses:
+        - 10.0.1.2/24
+```
+
+Apply:
+
+`netplan apply` {{ execute }}
+
+**Install nginx for testing:**
+
+```bash{{ execute }}
+apt update
+apt install -y nginx
+echo "This is WEB-1" > /var/www/html/index.html
+```
+
+Exit server.
+
+**Repeat for web-2:**
+
+SSH in, configure 10.0.1.3, install nginx:
+
+```bash{{ execute }}
+apt update
+apt install -y nginx
+echo "This is WEB-2" > /var/www/html/index.html
+```
+
+### Part 4: Test Private Network Communication
+
+**From web-1, ping web-2's private IP:**
+
+`ssh root@WEB1_PUBLIC_IP` {{ copy }}
+
+`ping 10.0.1.3` {{ execute }}
+
+Should work!
+
+**Test HTTP:**
+
+`curl http://10.0.1.3` {{ execute }}
+
+Should show: "This is WEB-2"
+
+**Success!** Servers communicating via private network! 🎉
+
+### Part 5: Create Floating IP
+
+**Create Floating IP:**
+
+`hcloud floating-ip create --type ipv4 --home-location ash --name lab-floating-ip` {{ execute }}
+
+Note the IP address (example: 95.216.200.50)
+
+**Assign to web-1:**
+
+`hcloud floating-ip assign <FLOATING_IP_ID> web-1` {{ execute }}
+
+Replace with your Floating IP ID from output above.
+
+**Configure on web-1:**
+
+SSH into web-1:
+
+`nano /etc/netplan/60-floating.yaml` {{ execute }}
+
+```yaml
+network:
+  version: 2
+  ethernets:
+    eth0:
+      addresses:
+        - YOUR_FLOATING_IP/32
+```
+
+Apply:
+
+`netplan apply` {{ execute }}
+
+**Test from your computer:**
+
+`curl http://FLOATING_IP` {{ copy }}
+
+Should show: "This is WEB-1"
+
+### Part 6: Create Firewall
+
+**Create firewall:**
+
+`hcloud firewall create --name lab-firewall` {{ execute }}
+
+**Add rules:**
+
+Get your IP from https://icanhazip.com
+
+`hcloud firewall add-rule lab-firewall --direction in --port 22 --protocol tcp --source-ips YOUR_IP/32` {{ execute }}
+
+`hcloud firewall add-rule lab-firewall --direction in --port 80 --protocol tcp --source-ips 0.0.0.0/0 --source-ips ::/0` {{ execute }}
+
+`hcloud firewall add-rule lab-firewall --direction in --protocol icmp --source-ips 0.0.0.0/0 --source-ips ::/0` {{ execute }}
+
+**Apply to servers:**
+
+`hcloud firewall apply-to-resource lab-firewall --type server --server web-1` {{ execute }}
+
+`hcloud firewall apply-to-resource lab-firewall --type server --server web-2` {{ execute }}
+
+**Test:**
+
+SSH should still work (from your IP):
+
+`ssh root@WEB1_PUBLIC_IP` {{ copy }}
+
+HTTP should work:
+
+`curl http://FLOATING_IP` {{ copy }}
+
+### Part 7: Test Floating IP Failover
+
+**Move Floating IP to web-2:**
+
+`hcloud floating-ip assign <FLOATING_IP_ID> web-2` {{ execute }}
+
+**Configure on web-2:**
+
+SSH into web-2 and add same netplan config with the Floating IP.
+
+**Test:**
+
+`curl http://FLOATING_IP` {{ copy }}
+
+Should now show: "This is WEB-2"
+
+**Floating IP moved instantly!** ⚡
+
+### Part 8: Cleanup
+
+**Delete everything:**
+
+```bash{{ copy }}
+hcloud firewall delete lab-firewall
+hcloud floating-ip delete <FLOATING_IP_ID>
+hcloud server delete web-1
+hcloud server delete web-2
+hcloud network delete lab-network
+```
+
+Type "yes" for each confirmation.
+
+**Verify:**
+
+`hcloud server list` {{ execute }}
+
+Should be empty (or only other servers).
+
+---
+
+## Module 2 Summary
+
+Congratulations! You've completed Module 2! 🎉
+
+**What you learned:**
+✅ IPv4 and IPv6 addressing
+✅ Primary IPs vs additional IPs and costs
+✅ Floating IPs for high availability and failover
+✅ Creating and using private networks
+✅ Server-to-server communication via private network
+✅ Firewall rules and security
+✅ Cloud Firewalls and how to apply them
+✅ Load balancer concepts and use cases
+
+**Key concepts:**
+- **Private Networks** = Secure, free, fast server-to-server communication
+- **Floating IPs** = Moveable IPs for high availability (~$1.19/month)
+- **Firewalls** = Security rules controlling traffic (free!)
+- **Load Balancers** = Distribute traffic across servers (~$6.50/month)
+
+**What's next:**
+In Module 3, you'll learn about storage - volumes, backups, and data management!
+
+---
+
+## Troubleshooting
+
+### "Can't ping servers on private network"
+
+**Problem:** Private network not communicating
+
+**Solutions:**
+
+1. **Check servers are on same network:**
+
+`hcloud server describe server-name` {{ execute }}
+
+Look for "Private Net" section.
+
+2. **Verify netplan config:**
+
+SSH in and check:
+
+`ip addr show ens10` {{ execute }}
+
+Should show private IP.
+
+3. **Check firewall isn't blocking:**
+
+Temporarily remove firewall and test.
+
+### "Floating IP not accessible"
+
+**Problem:** Can't access Floating IP from internet
+
+**Solutions:**
+
+1. **Verify it's assigned:**
+
+`hcloud floating-ip list` {{ execute }}
+
+Should show assigned server.
+
+2. **Check netplan configuration:**
+
+`ip addr show eth0` {{ execute }}
+
+Should list Floating IP.
+
+3. **Reapply netplan:**
+
+`netplan apply` {{ execute }}
+
+4. **Check firewall rules:**
+
+Ensure port 80/443 allowed from 0.0.0.0/0
+
+### "Locked out after applying firewall"
+
+**Problem:** Firewall blocked SSH access
+
+**Solutions:**
+
+1. **Use console access:**
+   - Go to server in Hetzner Console
+   - Click "Console" button
+   - Access via web-based console
+
+2. **Fix firewall rules:**
+   - Add your IP to SSH rule
+   - Or temporarily remove firewall
+
+3. **Prevention:**
+   - Always test firewall rules carefully
+   - Keep console access as backup
+   - Add your IP to SSH allowlist first
+
+---
+
+## Additional Resources
+
+**Official Documentation:**
+- [Hetzner Networks](https://docs.hetzner.com/cloud/networks/overview/)
+- [Hetzner Firewalls](https://docs.hetzner.com/cloud/firewalls/overview/)
+- [Hetzner Load Balancers](https://docs.hetzner.com/cloud/load-balancers/overview/)
+- [Floating IPs](https://docs.hetzner.com/cloud/floating-ips/overview/)
+
+**Tools:**
+- [IP Calculator](https://www.calculator.net/ip-subnet-calculator.html)
+- [Check Your IP](https://icanhazip.com)
+
+---
+
+## Quiz
+
+**1. What does a Floating IP allow you to do?**
+- [ ] Get more bandwidth
+- [x] Move an IP between servers instantly
+- [ ] Get a free IP address
+- [ ] Increase server performance
+
+**2. Private networks communicate via:**
+- [ ] Public internet
+- [x] Isolated private connection
+- [ ] VPN tunnel
+- [ ] SSH tunnel
+
+**3. What's the cost of a private network?**
+- [x] Free
+- [ ] $1/month
+- [ ] $5/month
+- [ ] Based on traffic
+
+**4. Cloud Firewalls in Hetzner are:**
+- [ ] Expensive ($10/month)
+- [x] Free
+- [ ] Only for enterprise
+- [ ] Not recommended
+
+**5. Which port is SSH?**
+- [ ] 80
+- [ ] 443
+- [x] 22
+- [ ] 3306
+
+**6. Load balancers are best for:**
+- [ ] Single server setups
+- [x] Distributing traffic across multiple servers
+- [ ] Reducing costs
+- [ ] Increasing storage
+
+**7. What IP range is commonly used for private networks?**
+- [ ] 95.216.0.0/16
+- [x] 10.0.0.0/16
+- [ ] 256.0.0.0/8
+- [ ] 1.1.1.0/24
+
+---
+
+**Next Module:** [Module 3 - Storage & Data Management](./module-03-storage.mdcl)
+
+**Previous Module:** [Module 1 - Deploying and Managing Servers](./module-01-servers.mdcl)
+
+**Back to:** [Course Overview](./README.md)

@@ -1,0 +1,1803 @@
+# Module 5: Scaling & Resource Optimization
+
+**Time:** 2 hours
+**Difficulty:** Beginner to Intermediate
+**Prerequisites:** Modules 0, 1, 2, 3, 4
+
+---
+
+## Module Overview
+
+As your application grows, you'll need to adjust resources to meet demand while controlling costs. In this module, you'll learn how to scale servers up or down, use snapshots for rapid deployment, monitor resource usage, and optimize your infrastructure spending.
+
+**What you'll learn:**
+- How to upgrade and downgrade server resources
+- Using snapshots to clone and scale environments
+- Monitoring server metrics and resource usage
+- Organizing resources with labels for better management
+- Cost tracking and optimization strategies
+- Identifying and eliminating waste
+
+**What you'll build:**
+- A server that scales from CPX11 to CPX21 and back
+- A snapshot-based deployment workflow
+- A labeled, organized infrastructure
+- A cost optimization strategy
+
+**Why this matters:**
+- Over-provisioning wastes money
+- Under-provisioning causes performance issues
+- Proper scaling ensures availability during traffic spikes
+- Cost optimization can reduce bills by 30-50%
+
+---
+
+## 5.1 — Rescaling Servers (Upgrade/Downgrade)
+
+### Understanding Server Scaling
+
+**Scaling** means adjusting resources to match demand. There are two types:
+
+**Vertical scaling (scaling up/down):**
+- Change server type to one with more/fewer resources
+- Add more CPU, RAM, storage to existing server
+- Also called "scaling up" (more resources) or "scaling down" (fewer resources)
+
+**Horizontal scaling (scaling out/in):**
+- Add more servers to distribute load
+- Remove servers when demand decreases
+- Also called "scaling out" (more servers) or "scaling in" (fewer servers)
+
+This section focuses on **vertical scaling** (changing server types).
+
+### When to Scale Up
+
+**Signs you need more resources:**
+
+**CPU:**
+- Server feels sluggish
+- Applications respond slowly
+- High CPU usage (consistently above 80%)
+- Background jobs taking longer than expected
+
+**RAM (Memory):**
+- Applications crashing with "out of memory" errors
+- Swap usage is high (system using disk instead of RAM)
+- Database queries slowing down
+- Cache effectiveness decreasing
+
+**Storage:**
+- Disk space warnings
+- Unable to write new files
+- Application logs filling disk
+- Database growing beyond current capacity
+
+**How to check:**
+
+```bash{{ execute }}
+# Check CPU usage
+top
+# Press 'q' to quit
+
+# Check memory usage
+free -h
+
+# Check disk usage
+df -h
+
+# Check swap usage
+swapon --show
+```
+
+### When to Scale Down
+
+**Signs you're over-provisioned:**
+
+- CPU usage consistently below 20%
+- RAM usage consistently below 40%
+- Paying for resources you don't use
+- Development/staging environments running production-sized servers
+
+**Cost optimization opportunity:** Downgrade to save money while maintaining performance.
+
+### Hetzner Server Types Comparison
+
+**Refresher on available types in US regions (Ashburn, Hillsboro):**
+
+**CPX Series (Shared CPU, AMD EPYC-Genoa):**
+
+| Type | vCPUs | RAM | Storage | Transfer | Price/Month |
+|------|-------|-----|---------|----------|-------------|
+| CPX11 | 2 | 2 GB | 40 GB | 20 TB | ~$5-6 |
+| CPX21 | 3 | 4 GB | 80 GB | 20 TB | ~$10-11 |
+| CPX31 | 4 | 8 GB | 160 GB | 20 TB | ~$19-21 |
+| CPX41 | 8 | 16 GB | 240 GB | 20 TB | ~$38-42 |
+| CPX51 | 16 | 32 GB | 360 GB | 20 TB | ~$75-82 |
+
+**CCX Series (Dedicated CPU, AMD EPYC):**
+
+| Type | vCPUs | RAM | Storage | Transfer | Price/Month |
+|------|-------|-----|---------|----------|-------------|
+| CCX13 | 2 | 8 GB | 80 GB | 20 TB | ~$52-57 |
+| CCX23 | 4 | 16 GB | 160 GB | 20 TB | ~$104-114 |
+| CCX33 | 8 | 32 GB | 240 GB | 20 TB | ~$208-228 |
+
+**CAX Series (Arm64, Ampere Altra):**
+
+| Type | vCPUs | RAM | Storage | Transfer | Price/Month |
+|------|-------|-----|---------|----------|-------------|
+| CAX11 | 2 | 4 GB | 40 GB | 20 TB | ~$4-5 |
+| CAX21 | 4 | 8 GB | 80 GB | 20 TB | ~$8-9 |
+| CAX31 | 8 | 16 GB | 160 GB | 20 TB | ~$16-18 |
+| CAX41 | 16 | 32 GB | 320 GB | 20 TB | ~$32-35 |
+
+**Choosing upgrades:**
+- Need more RAM but same CPU? CPX11 → CPX21
+- Need significantly more CPU? CPX11 → CPX31 or CCX13
+- Budget-conscious ARM-compatible workload? CPX11 → CAX21
+
+### Scaling Up via Console
+
+**Step 1: Navigate to server**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Click on your server
+
+**Step 2: Power off server**
+
+Click **"Power Off"** button.
+
+**Why power off?**
+- Upgrading requires hardware changes
+- Server must be stopped to change virtual hardware
+- Prevents data corruption during resize
+
+Wait for status to show "Off" (~10-30 seconds).
+
+**Step 3: Resize**
+
+1. Click **"Resize"** in the left menu
+2. Select new server type (e.g., CPX21 if currently CPX11)
+3. Review new monthly cost
+4. Click **"Resize"**
+
+**Upgrade types:**
+
+**Option 1: Upgrade disk too**
+- Increases root volume to match new server type
+- CPX11 (40 GB) → CPX21 (80 GB)
+- **Cannot be reversed** - disk won't shrink if you downgrade later
+
+**Option 2: Keep current disk**
+- Only changes CPU/RAM
+- Disk stays same size
+- **Can be reversed** - allows downgrading back to original type
+
+**Recommendation:** Choose "keep current disk" unless you specifically need more storage. This allows flexibility to downgrade later.
+
+**Step 4: Wait for resize**
+
+Resizing takes 1-3 minutes. Status will show progress.
+
+**Step 5: Power on**
+
+Click **"Power On"**.
+
+Server boots with new resources!
+
+**Step 6: Verify**
+
+SSH into server:
+
+```bash{{ copy }}
+ssh root@your-server-ip
+
+# Check CPU cores
+nproc
+
+# Check RAM
+free -h
+
+# Check disk (won't change if you kept current disk)
+df -h
+```
+
+### Scaling Up via CLI
+
+**More efficient for automation and scripting.**
+
+**Step 1: Power off server**
+
+```bash{{ copy }}
+hcloud server poweroff my-server
+```
+
+Wait for it to power off (check with `hcloud server describe my-server`).
+
+**Step 2: Resize**
+
+```bash{{ copy }}
+hcloud server change-type my-server --server-type cpx21 --keep-disk
+```
+
+**Parameters:**
+- `my-server` = Server name or ID
+- `--server-type cpx21` = New server type
+- `--keep-disk` = Don't resize disk (allows downgrading later)
+
+**Alternatively, resize disk too:**
+
+```bash{{ copy }}
+hcloud server change-type my-server --server-type cpx21 --upgrade-disk
+```
+
+**Step 3: Power on**
+
+```bash{{ copy }}
+hcloud server poweron my-server
+```
+
+**Step 4: Verify**
+
+```bash{{ copy }}
+hcloud server describe my-server
+```
+
+Check "Type" field shows new type.
+
+**Complete example (upgrade CPX11 → CPX21):**
+
+```bash{{ copy }}
+# Power off
+hcloud server poweroff my-server && \
+  echo "Waiting for server to power off..." && \
+  sleep 10
+
+# Resize
+hcloud server change-type my-server --server-type cpx21 --keep-disk && \
+  echo "Waiting for resize..." && \
+  sleep 30
+
+# Power on
+hcloud server poweron my-server && \
+  echo "Server upgraded to CPX21!"
+```
+
+### Scaling Down
+
+**Process is identical to scaling up**, just choose a smaller server type.
+
+**Important limitations:**
+
+**1. Disk size must fit:**
+- If you upgraded disk, you cannot downgrade below that disk size
+- Example: CPX11 (40 GB) → CPX21 with disk upgrade (80 GB) → cannot go back to CPX11 (40 GB)
+- Solution: Use `--keep-disk` when upgrading
+
+**2. RAM requirement:**
+- If applications currently use 6 GB RAM, you cannot downgrade to CPX11 (2 GB)
+- Server will be unstable or fail to boot
+- Check current usage before downgrading
+
+**Safe downgrade process:**
+
+```bash{{ copy }}
+# 1. SSH to server and check resource usage
+ssh root@your-server-ip
+free -h
+df -h
+top
+# Press 'q' to quit
+
+# 2. Verify new size will accommodate current usage
+# RAM usage < 70% of new server's RAM
+# Disk usage < 90% of new server's disk
+
+# 3. Power off and downgrade
+exit
+hcloud server poweroff my-server
+hcloud server change-type my-server --server-type cpx11 --keep-disk
+hcloud server poweron my-server
+```
+
+### Scaling Limitations and Considerations
+
+**Downtime:**
+- Server must be powered off
+- Expect 2-5 minutes of downtime
+- Plan upgrades during maintenance windows
+
+**Architecture limitation:**
+- Cannot change between different CPU architectures
+- CPX (AMD) ↔ CPX (AMD) ✅
+- CCX (AMD) ↔ CCX (AMD) ✅
+- CAX (ARM) ↔ CAX (ARM) ✅
+- CPX (AMD) ↔ CAX (ARM) ❌
+
+To switch architectures, you must create a new server and migrate.
+
+**Network considerations:**
+- IP addresses stay the same
+- Floating IPs remain attached
+- Private network connections maintained
+
+**Cost considerations:**
+- Billing is hourly
+- Charged for new size immediately after resize
+- No prorated refunds for downgrades
+
+### Automated Scaling Strategies
+
+**Scheduled scaling** for predictable patterns:
+
+**Example:** E-commerce site with high traffic during business hours, low traffic at night.
+
+**Strategy:**
+- Scale up to CPX21 at 8 AM
+- Scale down to CPX11 at 8 PM
+- Save ~50% on compute costs
+
+**Implementation with cron:**
+
+```bash{{ copy }}
+#!/bin/bash
+# scale-up.sh
+
+hcloud server poweroff my-server
+sleep 10
+hcloud server change-type my-server --server-type cpx21 --keep-disk
+sleep 30
+hcloud server poweron my-server
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# scale-down.sh
+
+hcloud server poweroff my-server
+sleep 10
+hcloud server change-type my-server --server-type cpx11 --keep-disk
+sleep 30
+hcloud server poweron my-server
+```
+
+**Schedule:**
+
+```bash{{ execute }}
+# crontab -e
+0 8 * * 1-5 /root/scale-up.sh    # Monday-Friday 8 AM: scale up
+0 20 * * 1-5 /root/scale-down.sh # Monday-Friday 8 PM: scale down
+```
+
+**Savings:**
+- CPX11: 12 hours/day × 5 days = 60 hours/week
+- CPX21: 12 hours/day × 5 days = 60 hours/week
+- Weekend: CPX11 × 48 hours
+
+vs. always CPX21.
+
+---
+
+## 5.2 — Using Snapshots to Scale Environments
+
+### Snapshot-Based Scaling
+
+**Snapshots** (from Module 1 and 3) are powerful for scaling:
+
+**Use case 1: Rapid server cloning**
+- Create snapshot of configured server
+- Deploy multiple identical servers from snapshot
+- All servers have same OS, applications, configuration
+
+**Use case 2: Environment replication**
+- Production server snapshot
+- Create staging/development servers from production snapshot
+- Test changes on identical environment
+
+**Use case 3: Blue-green deployments**
+- Create snapshot of current production (blue)
+- Deploy new version on separate server (green)
+- Test green thoroughly
+- Switch traffic from blue to green
+- Keep blue as instant rollback option
+
+### Creating Production-Ready Snapshots
+
+**Best practices for snapshots intended for cloning:**
+
+**1. Clean up before snapshot:**
+
+```bash{{ copy }}
+# SSH to server
+ssh root@your-server-ip
+
+# Clear package cache
+sudo apt clean
+
+# Remove old kernels
+sudo apt autoremove -y
+
+# Clear logs (optional, but reduces snapshot size)
+sudo journalctl --vacuum-time=2d
+
+# Clear bash history (contains sensitive commands)
+cat /dev/null > ~/.bash_history
+
+# Clear /tmp
+sudo rm -rf /tmp/*
+```
+
+**2. Remove server-specific configuration:**
+
+**Stop services that will conflict when cloned:**
+
+```bash{{ execute }}
+# If you're using hostname-based config, generalize it
+sudo nano /etc/hostname
+# Change to generic name or remove
+
+# Remove machine-id (will be regenerated on first boot)
+sudo truncate -s 0 /etc/machine-id
+```
+
+**3. Create snapshot:**
+
+```bash{{ copy }}
+# Exit server
+exit
+
+# Power off (recommended for consistency)
+hcloud server poweroff my-server
+
+# Create snapshot
+hcloud server create-snapshot my-server --description "production-clean-v1.0-2025-10-20"
+
+# Power on
+hcloud server poweron my-server
+```
+
+### Deploying from Snapshots
+
+**Via Console:**
+
+1. Click **"Create Server"**
+2. Under **"Image"**, select **"Snapshots"** tab
+3. Choose your snapshot
+4. Select server type
+5. Configure networking, SSH keys, etc.
+6. Click **"Create & Buy Now"**
+
+**Via CLI:**
+
+```bash{{ copy }}
+# List available snapshots
+hcloud image list --type snapshot
+
+# Note the snapshot ID
+
+# Create server from snapshot
+hcloud server create \
+  --name web-server-2 \
+  --type cpx11 \
+  --image SNAPSHOT_ID \
+  --location ash \
+  --ssh-key my-laptop
+```
+
+**Example - deploy 3 web servers from snapshot:**
+
+```bash{{ copy }}
+# Assume snapshot ID is 12345678
+
+for i in 1 2 3; do
+  hcloud server create \
+    --name web-server-$i \
+    --type cpx11 \
+    --image 12345678 \
+    --location ash \
+    --ssh-key my-laptop \
+    --network production-network
+
+  echo "Created web-server-$i"
+done
+```
+
+All three servers are identical, configured, and ready to serve traffic!
+
+### Scaling Across Locations
+
+**Scenario:** You have successful deployment in Ashburn, want to expand to Hillsboro for west coast users.
+
+**Challenge:** Snapshots are location-specific.
+
+**Solution:** Snapshot, deploy in same location, then migrate.
+
+**Workaround for cross-location:**
+
+**Option 1: Use image backups (slower but works):**
+
+```bash{{ execute }}
+# Create snapshot in Ashburn
+hcloud server create-snapshot ash-server --description "v1.0"
+
+# List snapshots
+hcloud image list --type snapshot
+
+# Create server from snapshot in different location (if supported)
+# Note: Currently Hetzner snapshots are location-bound, so this doesn't work directly
+```
+
+**Option 2: Automation scripts (recommended):**
+
+Use cloud-init or configuration management (Ansible, Terraform) to deploy identical configuration:
+
+```bash{{ copy }}
+# Create server in Hillsboro
+hcloud server create \
+  --name web-server-hil \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location hil \
+  --ssh-key my-laptop \
+  --user-data-from-file setup-script.sh
+```
+
+Where `setup-script.sh` contains cloud-init configuration to install and configure everything.
+
+**Option 3: Manual replication:**
+
+```bash{{ copy }}
+# Create new server in Hillsboro
+hcloud server create --name web-hil --type cpx11 --image ubuntu-24.04 --location hil --ssh-key my-laptop
+
+# Copy configuration from Ashburn server
+rsync -avz root@ash-server-ip:/etc/nginx/ root@hil-server-ip:/etc/nginx/
+rsync -avz root@ash-server-ip:/var/www/ root@hil-server-ip:/var/www/
+
+# SSH to Hillsboro server and restart services
+ssh root@hil-server-ip
+sudo systemctl restart nginx
+```
+
+---
+
+## 5.3 — Monitoring and Metrics
+
+### Understanding Server Metrics
+
+**Metrics** are measurements of resource usage over time. Monitoring metrics helps you:
+
+- Identify performance bottlenecks
+- Plan capacity (when to scale)
+- Detect anomalies (potential security issues)
+- Optimize costs (eliminate waste)
+
+**Key metrics:**
+
+**CPU:**
+- Percentage of CPU capacity used
+- Ideal: 30-70% average, spikes to 80-90% acceptable
+- Concern: Consistently above 80%
+
+**Memory (RAM):**
+- Percentage of RAM used
+- Ideal: 50-80%
+- Concern: Above 90% (swapping to disk)
+
+**Disk:**
+- Space used
+- Read/write operations (IOPS)
+- Concern: Above 85% full (performance degrades)
+
+**Network:**
+- Inbound/outbound traffic
+- Bandwidth usage
+- Concern: Approaching 20 TB/month limit
+
+### Hetzner Cloud Console Metrics
+
+**Basic metrics available in console:**
+
+1. Click on your server
+2. Click **"Graphs"** in left menu
+3. View metrics for:
+   - CPU usage (%)
+   - Network traffic (in/out)
+   - Disk I/O (read/write)
+
+**Time ranges:**
+- 1 hour
+- 24 hours
+- 7 days
+- 30 days
+
+**Limitations:**
+- Basic visualization
+- No alerts
+- No memory metrics
+- Limited history
+
+**Good for:** Quick checks and basic troubleshooting.
+
+### Command-Line Monitoring Tools
+
+For detailed real-time monitoring, SSH to your server and use these tools:
+
+#### top - Real-time Process Monitor
+
+```bash{{ execute }}
+top
+```
+
+**Output explanation:**
+
+```
+top - 14:23:01 up 5 days,  3:42,  1 user,  load average: 0.15, 0.18, 0.20
+Tasks: 105 total,   1 running, 104 sleeping,   0 stopped,   0 zombie
+%Cpu(s):  2.3 us,  0.7 sy,  0.0 ni, 96.7 id,  0.3 wa,  0.0 hi,  0.0 si,  0.0 st
+MiB Mem :   1987.0 total,    156.2 free,    823.4 used,   1007.4 buff/cache
+MiB Swap:      0.0 total,      0.0 free,      0.0 used.   1001.8 avail Mem
+
+  PID USER      PR  NI    VIRT    RES    SHR S  %CPU  %MEM     TIME+ COMMAND
+ 1234 www-data  20   0  123456  45678   9012 S   5.3   2.2   1:23.45 nginx
+```
+
+**Key lines:**
+- `load average: 0.15, 0.18, 0.20` = System load (1, 5, 15 minute averages)
+  - On 2-core system, ideal < 2.0
+  - Above number of cores = overloaded
+- `%Cpu(s): 2.3 us` = User processes using 2.3% CPU
+- `96.7 id` = 96.7% idle (good!)
+- `MiB Mem: 823.4 used` = 823 MB RAM used out of 1987 MB total
+- Process list shows which programs use most resources
+
+**Interactive commands in top:**
+- `P` = Sort by CPU usage
+- `M` = Sort by memory usage
+- `q` = Quit
+
+#### htop - Enhanced Process Viewer
+
+**More user-friendly than top:**
+
+```bash{{ execute }}
+# Install htop
+sudo apt install htop -y
+
+# Run
+htop
+```
+
+**Features:**
+- Color-coded CPU and memory bars
+- Mouse support
+- Easier to read
+- Tree view of processes
+
+#### free - Memory Usage
+
+```bash{{ execute }}
+free -h
+```
+
+**Example output:**
+
+```
+              total        used        free      shared  buff/cache   available
+Mem:          1.9Gi       804Mi       156Mi        12Mi       1.0Gi       1.0Gi
+Swap:            0B          0B          0B
+```
+
+**Reading:**
+- `total` = Total RAM installed
+- `used` = RAM used by applications
+- `available` = RAM available for new applications
+- `Swap` = Disk-based virtual memory (should be 0 or very low)
+
+**Concern:** If `available` is very low and `swap` is high, you need more RAM.
+
+#### df - Disk Space
+
+```bash{{ execute }}
+df -h
+```
+
+**Example output:**
+
+```
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sda1        40G   12G   26G  32% /
+/dev/sdb        200G   85G  105G  45% /mnt/data
+```
+
+**Reading:**
+- `Use%` = Percentage full
+- Concern: Above 85%
+
+**Check specific directory size:**
+
+```bash{{ execute }}
+du -sh /var/log
+du -sh /var/www
+du -sh /home
+```
+
+#### iostat - Disk I/O Statistics
+
+```bash{{ execute }}
+# Install sysstat package
+sudo apt install sysstat -y
+
+# Run iostat
+iostat -x 1
+```
+
+**Shows:**
+- Read/write operations per second
+- Disk utilization percentage
+- Useful for diagnosing slow disk performance
+
+#### nload - Network Bandwidth Monitor
+
+```bash{{ execute }}
+# Install
+sudo apt install nload -y
+
+# Run
+nload
+```
+
+**Shows:**
+- Real-time incoming/outgoing bandwidth
+- Graph of network usage
+- Press `q` to quit
+
+### Setting Up Monitoring Alerts
+
+**For production systems, automate monitoring with alerts.**
+
+#### Simple Script-Based Monitoring
+
+**CPU alert script:**
+
+```bash{{ execute }}
+#!/bin/bash
+# check-cpu.sh
+
+THRESHOLD=80
+CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | awk '{print $2}' | cut -d'%' -f1 | cut -d'.' -f1)
+
+if [ "$CPU_USAGE" -gt "$THRESHOLD" ]; then
+    echo "WARNING: CPU usage is ${CPU_USAGE}% (threshold: ${THRESHOLD}%)"
+    # Send email or notification
+    # Example: mail -s "CPU Alert" admin@example.com <<< "CPU usage: ${CPU_USAGE}%"
+fi
+```
+
+**Memory alert script:**
+
+```bash
+#!/bin/bash
+# check-memory.sh
+
+THRESHOLD=80
+MEM_USAGE=$(free | grep Mem | awk '{print int($3/$2 * 100)}')
+
+if [ "$MEM_USAGE" -gt "$THRESHOLD" ]; then
+    echo "WARNING: Memory usage is ${MEM_USAGE}% (threshold: ${THRESHOLD}%)"
+fi
+```
+
+**Disk space alert script:**
+
+```bash{{ execute }}
+#!/bin/bash
+# check-disk.sh
+
+THRESHOLD=85
+DISK_USAGE=$(df / | tail -1 | awk '{print $5}' | sed 's/%//')
+
+if [ "$DISK_USAGE" -gt "$THRESHOLD" ]; then
+    echo "WARNING: Disk usage is ${DISK_USAGE}% (threshold: ${THRESHOLD}%)"
+fi
+```
+
+**Schedule with cron (check every 5 minutes):**
+
+```bash{{ execute }}
+crontab -e
+```
+
+Add:
+
+```
+*/5 * * * * /root/check-cpu.sh >> /var/log/monitoring.log 2>&1
+*/5 * * * * /root/check-memory.sh >> /var/log/monitoring.log 2>&1
+*/5 * * * * /root/check-disk.sh >> /var/log/monitoring.log 2>&1
+```
+
+### Advanced Monitoring Solutions
+
+For production, consider dedicated monitoring tools:
+
+**Open-source options:**
+
+**Prometheus + Grafana:**
+- Industry-standard monitoring stack
+- Beautiful dashboards
+- Powerful alerting
+- Free and open-source
+
+**Netdata:**
+- Real-time performance monitoring
+- Automatic installation
+- Web-based dashboard
+- Low resource usage
+
+**Quick Netdata setup:**
+
+```bash{{ copy }}
+# Install Netdata
+bash <(curl -Ss https://my-netdata.io/kickstart.sh)
+
+# Access via browser
+# http://your-server-ip:19999
+```
+
+**Commercial options:**
+- Datadog (powerful but expensive)
+- New Relic
+- Prometheus Cloud (managed)
+
+---
+
+## 5.4 — Labeling and Organizing Resources
+
+### The Importance of Organization
+
+As infrastructure grows, organization becomes critical:
+
+**Problems without organization:**
+- "Which server is production?"
+- "Can I delete this old server?"
+- "Which resources belong to which project?"
+- Accidental deletion of production resources
+
+**Solution: Labels**
+
+**Labels** are key-value tags you attach to resources for organization.
+
+### Using Labels
+
+**Common labeling strategies:**
+
+**Environment:**
+- `environment=production`
+- `environment=staging`
+- `environment=development`
+
+**Application/Service:**
+- `app=website`
+- `app=database`
+- `app=cache`
+
+**Team/Owner:**
+- `team=backend`
+- `team=frontend`
+- `owner=alice`
+
+**Cost center:**
+- `cost-center=marketing`
+- `cost-center=engineering`
+
+**Lifecycle:**
+- `lifecycle=permanent`
+- `lifecycle=temporary`
+- `auto-delete=yes`
+
+### Adding Labels via Console
+
+**To a server:**
+
+1. Click on server
+2. Scroll to **"Labels"** section
+3. Click **"Edit Labels"**
+4. Add key-value pairs
+5. Click **"Save"**
+
+**Example:**
+- Key: `environment`, Value: `production`
+- Key: `app`, Value: `web`
+- Key: `team`, Value: `backend`
+
+### Adding Labels via CLI
+
+**Create server with labels:**
+
+```bash{{ execute }}
+hcloud server create \
+  --name web-prod-1 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --label environment=production \
+  --label app=web \
+  --label team=backend
+```
+
+**Add labels to existing server:**
+
+```bash{{ copy }}
+hcloud server add-label my-server environment=production
+hcloud server add-label my-server app=database
+```
+
+**Remove label:**
+
+```bash{{ copy }}
+hcloud server remove-label my-server team
+```
+
+### Filtering and Searching by Labels
+
+**List servers with specific label:**
+
+```bash{{ execute }}
+# All production servers
+hcloud server list --selector environment=production
+
+# All database servers
+hcloud server list --selector app=database
+
+# Production databases
+hcloud server list --selector environment=production --selector app=database
+```
+
+**Example output:**
+
+```
+ID        NAME           STATUS    IPV4              TYPE
+123456    db-prod-1      running   203.0.113.10      cpx21
+234567    db-prod-2      running   203.0.113.11      cpx21
+```
+
+**Apply firewall to all servers with label:**
+
+```bash{{ execute }}
+hcloud firewall create --name web-firewall
+hcloud firewall add-rule web-firewall --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0
+
+# Apply to all web servers automatically
+hcloud firewall apply-to-resource web-firewall --type label_selector --label-selector app=web
+```
+
+Now any server with `app=web` label automatically gets this firewall!
+
+### Labeling Other Resources
+
+**Not just servers - label everything:**
+
+**Volumes:**
+
+```bash{{ execute }}
+hcloud volume create --name db-storage --size 200 --location ash --label app=database --label environment=production
+```
+
+**Networks:**
+
+```bash{{ copy }}
+hcloud network create --name prod-network --ip-range 10.0.0.0/16 --label environment=production
+```
+
+**Firewalls:**
+
+```bash{{ execute }}
+hcloud firewall create --name prod-firewall --label environment=production
+```
+
+**Load Balancers:**
+
+```bash{{ execute }}
+hcloud load-balancer create --name web-lb --type lb11 --location ash --label app=web --label environment=production
+```
+
+### Organizing with Naming Conventions
+
+**Combine labels with clear naming:**
+
+**Naming pattern: `{service}-{environment}-{number}`**
+
+**Examples:**
+- `web-prod-1`, `web-prod-2`
+- `db-staging-1`
+- `cache-dev-1`
+
+**Benefits:**
+- Immediately understand purpose from name
+- Easy to sort alphabetically
+- Prevents accidental deletion
+
+**Combined with labels:**
+
+```bash{{ execute }}
+hcloud server create \
+  --name web-prod-1 \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --label environment=production \
+  --label app=web \
+  --label region=us-east \
+  --label managed-by=terraform
+```
+
+Now you can:
+- List all production resources: `--selector environment=production`
+- List all web servers: `--selector app=web`
+- Know it's managed by Terraform (don't manually edit)
+
+---
+
+## 5.5 — Cost Tracking and Optimization
+
+### Understanding Hetzner Billing
+
+**Billing basics:**
+
+**Hourly billing:**
+- All resources billed per hour
+- Rounded up to nearest hour
+- Month shown as estimate (hours × hourly rate)
+
+**Example:**
+- CPX11: ~$5-6/month = $0.007-0.008/hour
+- If you run for 10 hours, pay ~$0.07-0.08
+
+**Billing cycle:**
+- Monthly invoice
+- Covers previous calendar month
+- Payment auto-charged to card on file
+
+**What's billed:**
+- Servers (based on type and uptime)
+- Volumes (per GB, 24/7 even if not attached)
+- Snapshots (per GB)
+- Floating IPs (~$1.19/month each)
+- Load Balancers (~$6.50+/month)
+- Traffic over 20 TB/month (rare for most users)
+
+**What's free:**
+- Private networks
+- Cloud Firewalls
+- First 20 TB traffic per server
+
+### Checking Current Costs
+
+**Via Console:**
+
+1. Click on **"Billing"** in top-right menu
+2. View current month's estimated costs
+3. See breakdown by resource type
+4. Download previous invoices
+
+**Via CLI:**
+
+Hetzner CLI doesn't have built-in cost reporting, but you can estimate:
+
+```bash{{ execute }}
+# List all servers
+hcloud server list
+
+# Count servers by type
+hcloud server list -o columns=type | sort | uniq -c
+```
+
+**Manual calculation:**
+
+```
+2 × CPX11 × $5.50/month = $11.00
+1 × CPX21 × $10.50/month = $10.50
+3 × 100GB volumes × $4.90 = $14.70
+2 × Snapshots × 50GB × $0.60 = $0.60
+1 × Floating IP = $1.19
+-----------------------------------
+Total estimate: $37.99/month
+```
+
+### Cost Optimization Strategies
+
+#### 1. Right-Size Your Servers
+
+**Identify over-provisioned servers:**
+
+```bash{{ copy }}
+# SSH to each server
+ssh root@server-ip
+
+# Check if under-utilized
+top
+free -h
+```
+
+**If consistently using < 30% CPU and < 50% RAM, downgrade.**
+
+**Example savings:**
+- CPX21 ($10.50/month) → CPX11 ($5.50/month) = **$5/month saved**
+- 5 over-provisioned servers = **$25/month saved** = **$300/year**
+
+#### 2. Delete Unused Resources
+
+**Common waste:**
+
+**Old snapshots:**
+
+```bash{{ copy }}
+# List all snapshots
+hcloud image list --type snapshot
+
+# Delete old ones
+hcloud image delete SNAPSHOT_ID
+```
+
+**Snapshot costs:**
+- 5 old snapshots × 100 GB × $0.012/GB = $6/month waste
+
+**Unused volumes:**
+
+```bash{{ execute }}
+# List volumes
+hcloud volume list
+
+# Check which are unattached (Server column shows "-")
+# Delete unused
+hcloud volume delete volume-name
+```
+
+**Unused floating IPs:**
+
+```bash{{ copy }}
+# List floating IPs
+hcloud floating-ip list
+
+# Delete unused
+hcloud floating-ip delete IP_ID
+```
+
+**Savings:** $1.19/month per unused floating IP
+
+**Old development servers:**
+
+```bash{{ execute }}
+# List servers
+hcloud server list --selector environment=development
+
+# Delete old/unused ones
+hcloud server delete old-dev-server
+```
+
+#### 3. Scheduled Shutdown
+
+**For non-production environments:**
+
+Shutdown servers outside business hours.
+
+**Example: Development servers**
+- Only needed 9 AM - 6 PM Monday-Friday
+- Shutdown at 6 PM, start at 9 AM
+- Running: 45 hours/week instead of 168 hours/week
+- **Savings: 73%** of compute costs
+
+**Implementation:**
+
+```bash{{ execute }}
+# Shutdown script
+#!/bin/bash
+hcloud server poweroff dev-server-1
+hcloud server poweroff dev-server-2
+
+# Startup script
+#!/bin/bash
+hcloud server poweron dev-server-1
+hcloud server poweron dev-server-2
+
+# Crontab
+0 18 * * 1-5 /root/shutdown-dev.sh  # Weekdays 6 PM
+0 9 * * 1-5 /root/startup-dev.sh    # Weekdays 9 AM
+```
+
+**Savings for 2 × CPX11 dev servers:**
+- Normal: 2 × $5.50 = $11/month
+- With shutdown: 2 × $5.50 × 27% = $3/month
+- **Saved: $8/month** per dev environment
+
+#### 4. Use Snapshots Instead of Idle Servers
+
+**Scenario:** Staging environment only used before releases (1 week per month).
+
+**Bad approach:**
+- Keep staging servers running 24/7
+- Cost: 2 × CPX11 = $11/month
+
+**Good approach:**
+- Create snapshot of staging setup
+- Delete servers after use
+- Recreate from snapshot when needed (1 week/month)
+- Cost: Snapshot (2 × 40 GB × $0.012) + 1 week server time = $1 + $2.75 = $3.75/month
+- **Saved: $7.25/month**
+
+#### 5. Optimize Volume Sizes
+
+**Common waste:** Over-provisioned volumes
+
+```bash{{ copy }}
+# Check actual usage on volumes
+ssh root@server-ip
+df -h /mnt/data
+```
+
+**If volume is 500 GB but only using 100 GB:**
+- Cannot shrink volumes, but...
+- Create new 150 GB volume
+- Copy data to new volume
+- Delete old 500 GB volume
+
+**Savings:**
+- 500 GB @ $0.049/GB = $24.50/month
+- 150 GB @ $0.049/GB = $7.35/month
+- **Saved: $17.15/month**
+
+#### 6. Choose Appropriate Server Types
+
+**CPX vs CCX:**
+
+**CPX (shared CPU):**
+- Good for most workloads
+- Cheaper
+- Acceptable performance
+
+**CCX (dedicated CPU):**
+- Needed for CPU-intensive workloads
+- Expensive
+- Overkill for many use cases
+
+**Example:**
+- Web server on CCX13: $52/month
+- Same web server on CPX21: $10.50/month
+- **Saved: $41.50/month** if workload doesn't need dedicated CPU
+
+**CPX vs CAX (ARM):**
+
+If your application is ARM-compatible:
+- CPX21 (AMD): $10.50/month, 3 vCPU, 4 GB RAM
+- CAX21 (ARM): $8.50/month, 4 vCPU, 8 GB RAM
+- **Saved: $2/month** and get better specs!
+
+**Check ARM compatibility:**
+- Languages: Python, Go, Rust, Node.js (usually work)
+- Databases: PostgreSQL, MySQL, Redis (have ARM builds)
+- Docker images: Check if ARM variants exist
+
+#### 7. Monitor and Alert on Spending
+
+**Set billing alerts:**
+
+Hetzner Console → Billing → Alerts
+
+Set threshold (e.g., $50/month) to get notified if costs exceed budget.
+
+**Monthly cost review:**
+- First of every month, review previous month's invoice
+- Check for unexpected charges
+- Look for optimization opportunities
+
+### Cost Optimization Checklist
+
+**Monthly review:**
+
+```
+□ Review all running servers - are they needed?
+□ Check server resource utilization - can any be downsized?
+□ List and delete old snapshots (keep only recent backups)
+□ Check for unattached volumes
+□ Review floating IPs - delete unused
+□ Check for forgotten development/test servers
+□ Verify scheduled shutdown scripts are working
+□ Review volume sizes vs actual usage
+□ Check if any workloads can move to CAX (ARM)
+□ Compare month-over-month costs, investigate spikes
+```
+
+---
+
+## Lab 5: Scaling and Cost Optimization
+
+**Time:** 45-60 minutes
+**Cost:** ~$0.10-0.20 (if deleted immediately)
+
+### Lab Objectives
+
+1. Create a CPX11 server and monitor its resources
+2. Scale up to CPX21 and observe changes
+3. Scale back down to CPX11
+4. Create a snapshot and deploy clone
+5. Apply labels for organization
+6. Identify and eliminate waste
+7. Calculate cost savings
+
+### Step 1: Create Initial Server
+
+```bash{{ copy }}
+hcloud server create \
+  --name scale-lab-server \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop \
+  --label environment=lab \
+  --label app=test \
+  --label auto-delete=yes
+```
+
+**Note the server IP.**
+
+### Step 2: Monitor Baseline Resources
+
+SSH to server:
+
+```bash{{ copy }}
+ssh root@server-ip
+```
+
+**Check resources:**
+
+```bash{{ execute }}
+# CPU cores
+nproc
+
+# RAM
+free -h
+
+# Disk
+df -h
+
+# Install htop for better monitoring
+sudo apt update && sudo apt install htop -y
+
+# Run htop
+htop
+```
+
+**Press `q` to quit htop.**
+
+**Expected on CPX11:**
+- 2 CPU cores
+- ~2 GB RAM total
+- ~40 GB disk
+
+### Step 3: Create Some Load
+
+**Install stress testing tool:**
+
+```bash{{ execute }}
+sudo apt install stress -y
+```
+
+**Create CPU load:**
+
+```bash{{ execute }}
+# Run stress test in background (2 workers for 2 cores)
+stress --cpu 2 --timeout 60s &
+```
+
+**Watch in htop:**
+
+```bash{{ execute }}
+htop
+```
+
+CPU should show ~100% on both cores. This simulates high load.
+
+Wait for stress test to complete (60 seconds).
+
+**Exit SSH:**
+
+```bash{{ execute }}
+exit
+```
+
+### Step 4: Scale Up to CPX21
+
+```bash{{ execute }}
+# Power off
+hcloud server poweroff scale-lab-server
+
+# Wait for shutdown
+sleep 10
+
+# Scale up (keeping disk size)
+hcloud server change-type scale-lab-server --server-type cpx21 --keep-disk
+
+# Wait for resize
+sleep 30
+
+# Power on
+hcloud server poweron scale-lab-server
+```
+
+**Verify:**
+
+```bash{{ execute }}
+hcloud server describe scale-lab-server | grep "Type:"
+```
+
+Should show `cpx21`.
+
+### Step 5: Verify New Resources
+
+```bash{{ copy }}
+ssh root@server-ip
+
+# Check new resources
+nproc          # Should show 3 cores
+free -h        # Should show ~4 GB RAM
+df -h          # Disk same size (we used --keep-disk)
+
+# Run stress test with more workers
+stress --cpu 3 --timeout 30s &
+htop
+```
+
+Now you have 3 cores to utilize!
+
+**Exit:**
+
+```bash{{ execute }}
+exit
+```
+
+### Step 6: Scale Back Down to CPX11
+
+```bash{{ execute }}
+# Power off
+hcloud server poweroff scale-lab-server
+sleep 10
+
+# Scale down
+hcloud server change-type scale-lab-server --server-type cpx11 --keep-disk
+sleep 30
+
+# Power on
+hcloud server poweron scale-lab-server
+```
+
+**Verify:**
+
+```bash{{ execute }}
+hcloud server describe scale-lab-server | grep "Type:"
+```
+
+Should show `cpx11` again.
+
+### Step 7: Create Production Snapshot
+
+**Prepare server for snapshot:**
+
+```bash{{ copy }}
+ssh root@server-ip
+
+# Clean up
+sudo apt clean
+sudo apt autoremove -y
+cat /dev/null > ~/.bash_history
+
+exit
+```
+
+**Create snapshot:**
+
+```bash{{ execute }}
+hcloud server poweroff scale-lab-server
+sleep 10
+
+hcloud server create-snapshot scale-lab-server --description "lab-baseline-2025-10-20"
+
+hcloud server poweron scale-lab-server
+```
+
+**Verify snapshot:**
+
+```bash{{ execute }}
+hcloud image list --type snapshot
+```
+
+Note the snapshot ID.
+
+### Step 8: Deploy Clone from Snapshot
+
+```bash{{ copy }}
+# Create clone
+hcloud server create \
+  --name scale-lab-clone \
+  --type cpx11 \
+  --image SNAPSHOT_ID \
+  --location ash \
+  --ssh-key my-laptop \
+  --label environment=lab \
+  --label app=test \
+  --label cloned-from=scale-lab-server
+```
+
+**Verify both servers exist:**
+
+```bash{{ execute }}
+hcloud server list --selector environment=lab
+```
+
+Should show both `scale-lab-server` and `scale-lab-clone`.
+
+**SSH to clone:**
+
+```bash{{ copy }}
+ssh root@clone-server-ip
+
+# Verify it has same configuration
+htop
+# Should show same apps/config as original
+
+exit
+```
+
+### Step 9: Apply Advanced Labels
+
+**Add cost tracking labels:**
+
+```bash{{ copy }}
+# Add cost-center label
+hcloud server add-label scale-lab-server cost-center=training
+hcloud server add-label scale-lab-clone cost-center=training
+
+# Add owner
+hcloud server add-label scale-lab-server owner=your-name
+hcloud server add-label scale-lab-clone owner=your-name
+
+# Add creation date
+hcloud server add-label scale-lab-server created=2025-10-20
+hcloud server add-label scale-lab-clone created=2025-10-20
+```
+
+**Search by labels:**
+
+```bash{{ copy }}
+# All resources for training cost-center
+hcloud server list --selector cost-center=training
+
+# All resources owned by you
+hcloud server list --selector owner=your-name
+
+# All lab resources marked for auto-delete
+hcloud server list --selector auto-delete=yes
+```
+
+### Step 10: Cost Analysis
+
+**List all your resources:**
+
+```bash{{ copy }}
+echo "=== SERVERS ==="
+hcloud server list
+
+echo "=== VOLUMES ==="
+hcloud volume list
+
+echo "=== SNAPSHOTS ==="
+hcloud image list --type snapshot
+
+echo "=== FLOATING IPs ==="
+hcloud floating-ip list
+```
+
+**Calculate costs (example):**
+
+```
+Current resources:
+- 2 × CPX11 servers × $0.008/hour = $0.016/hour
+- 1 × Snapshot (40 GB) × $0.012/GB/month ÷ 730 hours = $0.0007/hour
+
+Per hour: $0.0167
+Per day: $0.40
+Per month (if kept): $12.20
+```
+
+**Optimization plan:**
+
+```
+After lab cleanup:
+- Delete both servers: Save $11/month
+- Delete snapshot: Save $0.48/month
+- Total savings: $11.48/month
+```
+
+### Step 11: Cleanup and Cost Savings
+
+**Delete all lab resources:**
+
+```bash{{ copy }}
+# Delete servers
+hcloud server delete scale-lab-server
+hcloud server delete scale-lab-clone
+
+# Delete snapshot
+hcloud image delete SNAPSHOT_ID
+
+# Verify everything deleted
+hcloud server list --selector environment=lab
+hcloud image list --type snapshot
+```
+
+Should show nothing.
+
+**Actual savings from cleanup:** ~$11.48/month
+
+---
+
+## Lab 5 Summary
+
+**What you accomplished:**
+
+✅ Created and monitored a CPX11 server
+✅ Generated load and observed resource usage
+✅ Scaled up to CPX21 (more CPU/RAM)
+✅ Scaled back down to CPX11
+✅ Created a production-ready snapshot
+✅ Deployed a clone from snapshot
+✅ Applied comprehensive labels for organization
+✅ Analyzed costs and identified savings
+✅ Cleaned up all resources
+
+**Key takeaways:**
+- Scaling is quick (2-5 minutes total)
+- Keeping disk allows reversible scaling
+- Snapshots enable rapid cloning
+- Labels are essential for organization
+- Regular cleanup saves significant costs
+- Monitoring helps identify optimization opportunities
+
+---
+
+## Module 5 Quiz
+
+**1. What happens to a server's data when you scale from CPX11 to CPX21 with `--keep-disk`?**
+
+a) Data is deleted
+b) Data is preserved, disk size stays 40 GB
+c) Data is preserved, disk increases to 80 GB
+d) Server is recreated from scratch
+
+<details>
+<summary>Answer</summary>
+b) Data is preserved, disk size stays 40 GB (allows scaling back down later)
+</details>
+
+**2. What is the main advantage of using `--keep-disk` when scaling?**
+
+a) It's faster
+b) It allows you to scale back down later
+c) It's cheaper
+d) It preserves data better
+
+<details>
+<summary>Answer</summary>
+b) It allows you to scale back down later (without disk resize constraint)
+</details>
+
+**3. How much does a 100 GB Hetzner volume cost per month?**
+
+a) $1.20
+b) $4.90
+c) $10.00
+d) $0.49
+
+<details>
+<summary>Answer</summary>
+b) $4.90 (100 GB × $0.049/GB)
+</details>
+
+**4. What's the benefit of labeling resources?**
+
+a) Makes them faster
+b) Reduces costs
+c) Enables organization, filtering, and bulk operations
+d) Required by Hetzner
+
+<details>
+<summary>Answer</summary>
+c) Enables organization, filtering, and bulk operations
+</details>
+
+**5. If a development server is only needed 45 hours/week instead of 168 hours/week, approximately how much can you save with scheduled shutdown?**
+
+a) 25%
+b) 50%
+c) 73%
+d) 90%
+
+<details>
+<summary>Answer</summary>
+c) 73% (running 45/168 hours = 27% of time, saving 73%)
+</details>
+
+**6. What's the correct command to scale a server while keeping the same disk size?**
+
+a) `hcloud server resize --keep-disk`
+b) `hcloud server change-type server-name --server-type cpx21 --keep-disk`
+c) `hcloud server scale --keep-disk`
+d) `hcloud server upgrade --keep-disk`
+
+<details>
+<summary>Answer</summary>
+b) `hcloud server change-type server-name --server-type cpx21 --keep-disk`
+</details>
+
+**7. Which resource is billed 24/7 even when not in use?**
+
+a) Powered-off servers
+b) Volumes
+c) Floating IPs (when unassigned)
+d) Both b and c
+
+<details>
+<summary>Answer</summary>
+d) Both volumes and floating IPs are billed continuously
+</details>
+
+**8. What's a good threshold for considering downsizing a server?**
+
+a) CPU consistently below 50%
+b) CPU consistently below 20% and RAM below 40%
+c) RAM above 90%
+d) Disk above 80%
+
+<details>
+<summary>Answer</summary>
+b) CPU consistently below 20% and RAM below 40% indicates under-utilization
+</details>
+
+---
+
+## Additional Resources
+
+**Monitoring Tools:**
+- [Netdata](https://www.netdata.cloud/) - Free real-time monitoring
+- [Prometheus](https://prometheus.io/) - Open-source monitoring and alerting
+- [Grafana](https://grafana.com/) - Visualization and dashboards
+
+**Cost Optimization:**
+- [Hetzner Pricing](https://www.hetzner.com/cloud#pricing)
+- [Cloud Cost Optimization Guide](https://www.hetzner.com/cloud)
+
+**Linux Performance:**
+- [Linux Performance Analysis](http://www.brendangregg.com/linuxperf.html)
+- [htop Explained](https://peteris.rocks/blog/htop/)
+
+---
+
+## What's Next?
+
+Congratulations! You now know how to scale infrastructure and optimize costs effectively.
+
+**You learned:**
+- Vertical scaling (up/down)
+- Snapshot-based deployment and cloning
+- Resource monitoring and metrics
+- Organization with labels
+- Cost tracking and optimization strategies
+- Identifying and eliminating waste
+
+**Next Module:** [Module 6 - Advanced Server Operations](./module-06-advanced-operations.mdcl)
+
+In Module 6, you'll learn advanced operational techniques including rescue mode, cloud-init automation, console debugging, and API exploration.
+
+---
+
+**Questions or issues?** Visit the [Hetzner Community Forum](https://community.hetzner.com/).

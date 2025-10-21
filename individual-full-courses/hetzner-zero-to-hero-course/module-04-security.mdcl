@@ -1,0 +1,2264 @@
+# Module 4: Security & Access Control
+
+**Time:** 3 hours
+**Difficulty:** Beginner to Intermediate
+**Prerequisites:** Modules 0, 1, 2, 3
+
+---
+
+## Module Overview
+
+Security is not optional - it's essential. In this module, you'll learn how to properly secure your Hetzner Cloud infrastructure using industry-standard practices. We'll cover SSH key management, network isolation with firewalls and private networks, server hardening, and protecting your API access.
+
+**What you'll learn:**
+- SSH key authentication and management
+- Network security with firewalls and private networks
+- Linux server hardening techniques
+- API token security best practices
+- GDPR compliance considerations for EU data
+
+**What you'll build:**
+- A hardened server with SSH key-only authentication
+- Firewall rules for web server protection
+- Isolated network architecture
+- Secure API token workflow
+
+**Why this matters:**
+- Unsecured servers can be compromised in minutes
+- Data breaches are expensive and damage reputation
+- Compliance requirements (GDPR, SOC 2, etc.) require security measures
+- Prevention is cheaper than recovery
+
+---
+
+## 4.1 — SSH Key Management
+
+### What is SSH?
+
+**SSH** (Secure Shell) is a protocol for securely connecting to remote servers over the internet. Think of it like a secure telephone line between your computer and your server.
+
+**SSH provides:**
+- **Encryption:** All communication is encrypted (scrambled) so attackers can't read it
+- **Authentication:** Proves you are who you say you are
+- **Secure remote access:** Run commands on your server from anywhere
+
+**How SSH works:**
+
+```
+Your Computer                         Your Server
+     |                                     |
+     |  "I want to connect"                |
+     |------------------------------------>|
+     |                                     |
+     |  "Prove who you are"                |
+     |<------------------------------------|
+     |                                     |
+     |  [Sends cryptographic proof]        |
+     |------------------------------------>|
+     |                                     |
+     |  "Access granted"                   |
+     |<------------------------------------|
+     |                                     |
+     |  [Encrypted communication]          |
+     |<----------------------------------->|
+```
+
+### Password vs SSH Key Authentication
+
+There are two main ways to authenticate (prove your identity) with SSH:
+
+#### Password Authentication
+
+**How it works:**
+- You type username and password each time you connect
+- Password is sent over encrypted connection
+- Server checks if password matches
+
+**Problems with passwords:**
+- **Weak passwords:** Users often choose easy-to-guess passwords
+- **Brute force attacks:** Attackers try thousands of passwords automatically
+- **Phishing:** Users can be tricked into revealing passwords
+- **Reuse:** Same password used on multiple systems
+- **Typing errors:** Easy to mistype, especially complex passwords
+
+**Example brute force attack:**
+An attacker's script tries to SSH to your server:
+```
+Trying: admin / password123
+Trying: admin / admin
+Trying: root / root
+Trying: root / password
+... (thousands of attempts per minute)
+```
+
+With enough time, weak passwords will be cracked.
+
+#### SSH Key Authentication (Recommended)
+
+**How it works:**
+- You generate a **key pair:** a private key (secret) and public key (shareable)
+- Private key stays on your computer, never leaves
+- Public key is copied to the server
+- When connecting, cryptographic proof using private key is verified against public key
+
+**Think of it like a lock and key:**
+- Public key = lock (you can give copies to anyone)
+- Private key = key (you keep it secret, never share)
+- Only your private key can "unlock" servers with your public key
+
+**Advantages:**
+- **Much stronger:** Equivalent to ~4000+ character password
+- **No typing:** Automatic authentication
+- **No brute force:** Cannot be guessed by trying combinations
+- **No transmission:** Private key never sent over network
+- **Revocable:** Remove public key from server to revoke access
+
+### Generating SSH Keys
+
+Most modern systems come with SSH tools pre-installed.
+
+**Check if you already have SSH keys:**
+
+```bash{{ execute }}
+ls -la ~/.ssh/
+```
+
+**What is ~/.ssh/?**
+- `~` = your home directory
+- `.ssh` = hidden directory (starts with `.`) for SSH configuration
+- This is where SSH keys are stored
+
+**If you see files like `id_rsa` and `id_rsa.pub`, you already have keys.**
+
+If not, let's generate them:
+
+**Generate new SSH key pair:**
+
+```bash{{ copy }}
+ssh-keygen -t ed25519 -C "your-email@example.com"
+```
+
+**Command breakdown:**
+- `ssh-keygen` = SSH key generation tool
+- `-t ed25519` = Key type (Ed25519, modern and secure)
+- `-C "your-email@example.com"` = Comment to identify this key
+
+**Alternative (if ed25519 not supported):**
+
+```bash{{ copy }}
+ssh-keygen -t rsa -b 4096 -C "your-email@example.com"
+```
+
+- `-t rsa` = RSA key type (older but widely supported)
+- `-b 4096` = 4096-bit key length (very secure)
+
+**Interactive prompts:**
+
+```
+Enter file in which to save the key (/Users/yourname/.ssh/id_ed25519):
+```
+
+**Press Enter** to use default location.
+
+```
+Enter passphrase (empty for no passphrase):
+```
+
+**Choose a strong passphrase** (optional but recommended). This adds an extra layer of security - even if someone steals your private key file, they can't use it without the passphrase.
+
+**Best practice:** Use a passphrase for production/work keys, optional for learning/lab keys.
+
+```
+Enter same passphrase again:
+```
+
+Retype your passphrase.
+
+**Result:**
+
+```
+Your identification has been saved in /Users/yourname/.ssh/id_ed25519
+Your public key has been saved in /Users/yourname/.ssh/id_ed25519.pub
+The key fingerprint is:
+SHA256:AbCdEfGhIjKlMnOpQrStUvWxYz1234567890 your-email@example.com
+```
+
+You now have two files:
+- `id_ed25519` = **Private key** (keep secret!)
+- `id_ed25519.pub` = **Public key** (safe to share)
+
+**View your public key:**
+
+```bash{{ execute }}
+cat ~/.ssh/id_ed25519.pub
+```
+
+**Example output:**
+
+```
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILongstringofcharacters1234567890 your-email@example.com
+```
+
+This is your public key. You'll add this to Hetzner and your servers.
+
+### Adding SSH Keys to Hetzner Cloud
+
+You can add SSH keys to your Hetzner project, then automatically deploy them to new servers.
+
+#### Via Console
+
+**Step 1: Copy your public key**
+
+```bash{{ execute }}
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy the entire output (triple-click to select all, then copy).
+
+**Step 2: Add to Hetzner Console**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Click **"Security"** in the left sidebar
+4. Click **"SSH Keys"** tab
+5. Click **"Add SSH Key"**
+6. Paste your public key into the text box
+7. Enter a name (e.g., `my-laptop`, `work-macbook`, `home-desktop`)
+8. Click **"Add SSH Key"**
+
+Now when you create servers, you can select this SSH key to be automatically installed.
+
+#### Via CLI
+
+```bash{{ copy }}
+hcloud ssh-key create --name my-laptop --public-key-from-file ~/.ssh/id_ed25519.pub
+```
+
+**Verify:**
+
+```bash{{ execute }}
+hcloud ssh-key list
+```
+
+**Example output:**
+
+```
+ID        NAME        FINGERPRINT
+123456    my-laptop   SHA256:AbCdEfGhIjKlMnOpQrStUvWxYz1234567890
+```
+
+### Creating Servers with SSH Keys
+
+**Via Console:**
+
+When creating a server (Module 1), you'll see an **"SSH Keys"** section. Check the box next to your key(s). Those keys will be automatically installed on the new server.
+
+**Via CLI:**
+
+```bash{{ copy }}
+hcloud server create \
+  --name secure-server \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+```
+
+The `--ssh-key my-laptop` parameter specifies which key to install.
+
+**Connect to the server:**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+You'll be connected without entering a password! (Or you'll be prompted for your key's passphrase if you set one.)
+
+### Adding SSH Keys to Existing Servers
+
+If you already have a server without your SSH key, you can add it manually.
+
+**Step 1: Connect with password (if enabled)**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+Enter the password.
+
+**Step 2: Create .ssh directory (if it doesn't exist)**
+
+```bash{{ execute }}
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+```
+
+**What is chmod 700?**
+- `chmod` = "change mode" (modify permissions)
+- `700` = Only the owner can read, write, and execute
+- Permissions format: `owner|group|others` = `rwx|---|---` = `7|0|0`
+
+**Step 3: Add your public key to authorized_keys**
+
+```bash{{ execute }}
+nano ~/.ssh/authorized_keys
+```
+
+Paste your public key (the content from `~/.ssh/id_ed25519.pub` on your local computer).
+
+Save with `Ctrl+O`, `Enter`, exit with `Ctrl+X`.
+
+**Step 4: Set correct permissions**
+
+```bash{{ execute }}
+chmod 600 ~/.ssh/authorized_keys
+```
+
+- `600` = Only owner can read and write, no execute
+
+**Step 5: Test**
+
+Open a new terminal (keep the current one open just in case!) and try:
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+You should connect without a password.
+
+### Managing Multiple SSH Keys
+
+**Scenario:** You have multiple keys for different purposes (work, personal, etc.) or multiple servers.
+
+**SSH config file:** `~/.ssh/config`
+
+This file lets you define shortcuts and settings for different servers.
+
+**Example config:**
+
+```bash{{ execute }}
+nano ~/.ssh/config
+```
+
+Add:
+
+```
+# Hetzner production servers
+Host prod-*
+  User root
+  IdentityFile ~/.ssh/id_ed25519_work
+
+# Hetzner development servers
+Host dev-*
+  User root
+  IdentityFile ~/.ssh/id_ed25519_personal
+
+# Specific server with custom settings
+Host my-web-server
+  HostName 203.0.113.10
+  User root
+  Port 22
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+**Usage:**
+
+```bash{{ copy }}
+# Instead of: ssh root@203.0.113.10
+ssh my-web-server
+
+# Matches Host prod-* pattern
+ssh prod-web-1
+
+# Matches Host dev-* pattern
+ssh dev-test-1
+```
+
+**Benefits:**
+- Shorter commands
+- Automatic key selection
+- Consistent settings across connections
+
+### SSH Key Security Best Practices
+
+**1. Protect your private key:**
+- Never share it or email it
+- Never commit to Git repositories
+- Use correct permissions (600 for key files, 700 for .ssh directory)
+- Use a strong passphrase
+
+**2. Use separate keys for different purposes:**
+- Work key for work servers
+- Personal key for personal projects
+- Don't reuse keys across organizations
+
+**3. Rotate keys periodically:**
+- Generate new keys every 1-2 years
+- Remove old public keys from servers
+- Useful if you suspect compromise
+
+**4. Remove keys for former team members:**
+- When someone leaves, remove their public key from servers
+- Prevent unauthorized access
+
+**5. Use key agent for convenience:**
+
+**SSH Agent** securely stores decrypted private keys in memory so you don't have to enter your passphrase repeatedly.
+
+**Start agent and add key:**
+
+```bash{{ execute }}
+# Start agent (usually starts automatically)
+eval "$(ssh-agent -s)"
+
+# Add your key
+ssh-add ~/.ssh/id_ed25519
+```
+
+Enter your passphrase once. Now you can SSH to any server with this key without entering the passphrase again (until you reboot).
+
+---
+
+## 4.2 — Network Isolation with Firewalls and Private Networks
+
+### Defense in Depth
+
+**Defense in depth** means using multiple layers of security. If one layer fails, others provide protection.
+
+**Example layers:**
+1. **Network firewall** - blocks unwanted traffic
+2. **Server firewall** - blocks unwanted traffic on the server itself
+3. **Application authentication** - requires login
+4. **Encryption** - protects data even if intercepted
+
+We'll focus on layers 1 and 2: network-level security.
+
+### Understanding Firewall Rules
+
+A **firewall** is a security system that monitors and controls network traffic based on rules you define.
+
+**Think of it like a security guard:**
+- You tell the guard: "Only let in people with these specific IDs"
+- The guard checks everyone trying to enter
+- People without proper ID are turned away
+
+**Firewall rule concepts:**
+
+**Direction:**
+- **Inbound** (ingress): Traffic coming INTO your server from the internet
+- **Outbound** (egress): Traffic going OUT from your server to the internet
+
+**Action:**
+- **Allow** (accept): Let this traffic through
+- **Deny** (drop): Block this traffic silently
+- **Reject**: Block this traffic and send error message back
+
+**Common criteria:**
+- **Port:** Which service (22 for SSH, 80 for HTTP, 443 for HTTPS)
+- **Protocol:** TCP, UDP, ICMP
+- **Source:** Where traffic is coming from (specific IP, range, or anywhere)
+- **Destination:** Where traffic is going (your server)
+
+### Hetzner Cloud Firewalls
+
+Hetzner Cloud Firewalls are **network-level** firewalls that filter traffic before it reaches your server. They're managed through the Hetzner interface and are very efficient.
+
+**Advantages:**
+- **Free:** No additional cost
+- **Efficient:** Filtering happens before traffic hits your server
+- **Centralized:** One firewall can protect multiple servers
+- **Easy to manage:** Simple interface, template-based
+
+**Default behavior:**
+- If no firewall is attached, all traffic is allowed
+- When you attach a firewall, only traffic matching "allow" rules is permitted
+- Everything else is blocked (implicit deny)
+
+### Creating a Firewall via Console
+
+**Step 1: Navigate to Firewalls**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Click **"Firewalls"** in the left sidebar
+4. Click **"Create Firewall"**
+
+**Step 2: Name the firewall**
+
+Enter a descriptive name: `web-server-firewall`, `ssh-only-firewall`, `production-firewall`
+
+**Step 3: Add inbound rules**
+
+Click **"Add Rule"** under **Inbound Rules**.
+
+**Common rule examples:**
+
+**Allow SSH (port 22) from anywhere:**
+- Protocol: `TCP`
+- Port: `22`
+- Source: `0.0.0.0/0` (IPv4 anywhere), `::/0` (IPv6 anywhere)
+
+**Allow HTTP (port 80) from anywhere:**
+- Protocol: `TCP`
+- Port: `80`
+- Source: `0.0.0.0/0`, `::/0`
+
+**Allow HTTPS (port 443) from anywhere:**
+- Protocol: `TCP`
+- Port: `443`
+- Source: `0.0.0.0/0`, `::/0`
+
+**Allow SSH from specific IP only (more secure):**
+- Protocol: `TCP`
+- Port: `22`
+- Source: `203.0.113.50/32` (only this IP)
+
+**What is /32?**
+- CIDR notation for a single IP address
+- `/32` means exactly one IPv4 address
+- `/24` means 256 addresses (e.g., `203.0.113.0/24` = `203.0.113.0` to `203.0.113.255`)
+
+**Allow ICMP (ping):**
+- Protocol: `ICMP`
+- Source: `0.0.0.0/0`, `::/0`
+
+**ICMP** (Internet Control Message Protocol) is used for diagnostic tools like `ping`.
+
+**Step 4: Add outbound rules (optional)**
+
+By default, Hetzner allows all outbound traffic. You usually don't need to change this unless you have very strict security requirements.
+
+**Example restrictive outbound rules:**
+- Allow HTTP/HTTPS for package updates
+- Allow DNS (port 53) for domain resolution
+- Block everything else
+
+For most use cases, leave outbound unrestricted.
+
+**Step 5: Apply to servers**
+
+In the **"Apply to"** section, select which servers should use this firewall.
+
+You can also do this later.
+
+**Step 6: Create**
+
+Click **"Create Firewall"**.
+
+### Creating a Firewall via CLI
+
+```bash{{ copy }}
+# Create firewall
+hcloud firewall create --name web-server-firewall
+
+# Add inbound rules
+# Allow SSH
+hcloud firewall add-rule web-server-firewall --direction in --protocol tcp --port 22 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Allow HTTP
+hcloud firewall add-rule web-server-firewall --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Allow HTTPS
+hcloud firewall add-rule web-server-firewall --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Allow ICMP (ping)
+hcloud firewall add-rule web-server-firewall --direction in --protocol icmp --source-ips 0.0.0.0/0 --source-ips ::/0
+```
+
+**Apply firewall to server:**
+
+```bash{{ copy }}
+hcloud firewall apply-to-resource web-server-firewall --type server --server my-server
+```
+
+**Verify:**
+
+```bash{{ copy }}
+hcloud firewall describe web-server-firewall
+```
+
+### Firewall Best Practices
+
+**1. Principle of Least Privilege:**
+
+Only allow the minimum necessary access.
+
+**Bad example (too permissive):**
+- Allow all ports from anywhere
+
+**Good example:**
+- Allow only SSH (22), HTTP (80), HTTPS (443)
+- Restrict SSH to your office IP if possible
+
+**2. Restrict SSH access:**
+
+If your IP address is static (doesn't change), restrict SSH to only your IP:
+
+```bash{{ copy }}
+hcloud firewall add-rule web-server-firewall --direction in --protocol tcp --port 22 --source-ips YOUR_IP/32
+```
+
+**Find your IP:**
+
+```bash{{ execute }}
+curl ifconfig.me
+```
+
+**3. Separate firewalls for different server roles:**
+
+- `database-firewall`: Only allows database port (e.g., 5432 for PostgreSQL) from application servers
+- `web-server-firewall`: Allows HTTP/HTTPS from anywhere, SSH from admin IPs
+- `internal-firewall`: Allows communication only within private network
+
+**4. Combine with private networks:**
+
+Use firewalls together with private networks (Module 2) for maximum security.
+
+**Architecture example:**
+
+```
+Internet
+    |
+    | (Firewall: allow 80, 443)
+    |
+Web Server (public IP)
+    |
+    | (Private network, Firewall: allow 5432 from web server only)
+    |
+Database Server (no public IP)
+```
+
+The database server:
+- Has NO public IP (not accessible from internet)
+- Only accessible via private network
+- Firewall allows database port only from web server's private IP
+
+### Testing Firewall Rules
+
+**Test SSH access:**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+Should work if port 22 is allowed.
+
+**Test HTTP/HTTPS:**
+
+If you have a web server running:
+
+```bash{{ copy }}
+curl http://your-server-ip
+curl https://your-server-ip
+```
+
+Should return web content if ports 80/443 are allowed.
+
+**Test blocked port:**
+
+If port 8080 is NOT in firewall rules:
+
+```bash{{ copy }}
+nc -zv your-server-ip 8080
+```
+
+**What is nc?**
+- **nc** = netcat, a network testing utility
+- `-z` = scan mode (don't send data)
+- `-v` = verbose (show results)
+
+Should show "Connection refused" or timeout if blocked.
+
+**Test ping (ICMP):**
+
+```bash{{ copy }}
+ping your-server-ip
+```
+
+Should work if ICMP is allowed, timeout if blocked.
+
+### Private Networks for Isolation
+
+**Private networks** (covered in Module 2) provide an additional isolation layer.
+
+**Use case:** Multi-tier application
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Internet                                           │
+└─────────────────────────────────────────────────────┘
+                        │
+                        │ Firewall: Allow 80, 443
+                        │
+             ┌──────────▼──────────┐
+             │   Web Server        │
+             │   Public IP         │
+             │   + Private IP      │
+             │   10.0.1.10         │
+             └──────────┬──────────┘
+                        │
+                        │ Private Network (10.0.1.0/24)
+                        │ No internet access
+                        │
+         ┌──────────────┴──────────────┐
+         │                             │
+┌────────▼──────────┐      ┌──────────▼──────────┐
+│  App Server 1     │      │  Database Server    │
+│  Private IP only  │      │  Private IP only    │
+│  10.0.1.20        │      │  10.0.1.30          │
+│  No public IP     │      │  No public IP       │
+└───────────────────┘      └─────────────────────┘
+```
+
+**Security benefits:**
+- Application and database servers have NO public IPs
+- Cannot be accessed directly from internet
+- Only web server is exposed publicly
+- All inter-server communication on private network
+- Firewall rules control what web server can access
+
+**Creating this architecture:**
+
+```bash{{ copy }}
+# Create private network (from Module 2)
+hcloud network create --name secure-network --ip-range 10.0.1.0/24
+hcloud network add-subnet secure-network --type cloud --network-zone us-east --ip-range 10.0.1.0/24
+
+# Create web server (with public IP)
+hcloud server create --name web-server --type cpx11 --image ubuntu-24.04 --location ash --ssh-key my-laptop --network secure-network
+
+# Create app server (no public IPv4)
+hcloud server create --name app-server --type cpx11 --image ubuntu-24.04 --location ash --ssh-key my-laptop --network secure-network --public-net-disable-ipv4
+
+# Create database server (no public IPv4)
+hcloud server create --name db-server --type cpx11 --image ubuntu-24.04 --location ash --ssh-key my-laptop --network secure-network --public-net-disable-ipv4
+
+# Create firewall for web server
+hcloud firewall create --name web-firewall
+hcloud firewall add-rule web-firewall --direction in --protocol tcp --port 22 --source-ips YOUR_IP/32
+hcloud firewall add-rule web-firewall --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0 --source-ips ::/0
+hcloud firewall add-rule web-firewall --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0
+hcloud firewall apply-to-resource web-firewall --type server --server web-server
+
+# Create firewall for internal servers
+hcloud firewall create --name internal-firewall
+hcloud firewall add-rule internal-firewall --direction in --protocol tcp --port 22 --source-ips 10.0.1.0/24
+hcloud firewall apply-to-resource internal-firewall --type server --server app-server
+hcloud firewall apply-to-resource internal-firewall --type server --server db-server
+```
+
+**Access pattern:**
+
+```bash{{ copy }}
+# SSH to web server from your computer
+ssh root@web-server-public-ip
+
+# From web server, SSH to app server via private IP
+ssh root@10.0.1.20
+
+# From app server, connect to database via private IP
+psql -h 10.0.1.30 -U postgres
+```
+
+---
+
+## 4.3 — Linux Server Hardening
+
+**Server hardening** means reducing the attack surface by disabling unnecessary services, applying security patches, and following security best practices.
+
+### Update and Patch Management
+
+**Why updates matter:**
+- Security vulnerabilities are discovered constantly
+- Attackers scan for unpatched servers
+- Patches fix known vulnerabilities
+
+**Update Ubuntu 24.04:**
+
+```bash{{ execute }}
+# Update package lists
+sudo apt update
+
+# Upgrade all packages
+sudo apt upgrade -y
+
+# Remove unused packages
+sudo apt autoremove -y
+```
+
+**What these commands do:**
+- `apt update` = Download latest package information
+- `apt upgrade` = Install newer versions of installed packages
+- `autoremove` = Remove packages that were installed as dependencies but are no longer needed
+
+**Enable automatic security updates:**
+
+```bash{{ execute }}
+sudo apt install unattended-upgrades -y
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+```
+
+Select **Yes** when prompted.
+
+This automatically installs security patches daily.
+
+**Verify it's enabled:**
+
+```bash{{ execute }}
+sudo systemctl status unattended-upgrades
+```
+
+Should show `active (running)`.
+
+### Disable Root Password Login
+
+If you're using SSH keys, you should disable password authentication entirely.
+
+**Edit SSH configuration:**
+
+```bash{{ execute }}
+sudo nano /etc/ssh/sshd_config
+```
+
+**Find and change these lines:**
+
+```
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+```
+
+**What these do:**
+- `PermitRootLogin prohibit-password` = Allow root login only with SSH keys (no password)
+- `PasswordAuthentication no` = Disable password authentication for all users
+- `PubkeyAuthentication yes` = Enable SSH key authentication
+
+**Save and restart SSH:**
+
+```bash{{ execute }}
+sudo systemctl restart sshd
+```
+
+**Test in new terminal BEFORE closing current one:**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+Should work with SSH key. If you try password auth, it should be rejected.
+
+### Change Default SSH Port (Optional)
+
+Most SSH brute-force attacks target port 22. Changing the port reduces automated attack noise.
+
+**Note:** This is "security through obscurity" - a minor deterrent, not real security. Firewalls and SSH keys are more important.
+
+**Edit SSH config:**
+
+```bash{{ execute }}
+sudo nano /etc/ssh/sshd_config
+```
+
+**Find and change:**
+
+```
+Port 2222
+```
+
+(Or any port between 1024-65535, avoiding common ports like 8080, 3306, etc.)
+
+**Update firewall BEFORE restarting SSH:**
+
+```bash{{ copy }}
+# Via CLI
+hcloud firewall add-rule your-firewall --direction in --protocol tcp --port 2222 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Remove old port 22 rule if desired
+hcloud firewall delete-rule your-firewall --direction in --protocol tcp --port 22
+```
+
+**Restart SSH:**
+
+```bash{{ execute }}
+sudo systemctl restart sshd
+```
+
+**Connect using new port:**
+
+```bash{{ copy }}
+ssh -p 2222 root@your-server-ip
+```
+
+**Add to SSH config for convenience:**
+
+```bash{{ execute }}
+nano ~/.ssh/config
+```
+
+```
+Host my-server
+  HostName your-server-ip
+  User root
+  Port 2222
+  IdentityFile ~/.ssh/id_ed25519
+```
+
+Now you can just use: `ssh my-server`
+
+### Configure UFW (Uncomplicated Firewall)
+
+**UFW** is a server-level firewall (in addition to Hetzner Cloud Firewall). It provides an additional security layer.
+
+**Install and enable:**
+
+```bash{{ execute }}
+sudo apt install ufw -y
+```
+
+**Default policies:**
+
+```bash{{ execute }}
+# Deny all incoming by default
+sudo ufw default deny incoming
+
+# Allow all outgoing by default
+sudo ufw default allow outgoing
+```
+
+**Allow SSH (IMPORTANT: do this before enabling, or you'll lock yourself out!):**
+
+```bash{{ execute }}
+sudo ufw allow 22/tcp
+```
+
+Or if you changed SSH port:
+
+```bash{{ execute }}
+sudo ufw allow 2222/tcp
+```
+
+**Allow HTTP and HTTPS:**
+
+```bash{{ execute }}
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+**Enable UFW:**
+
+```bash{{ execute }}
+sudo ufw enable
+```
+
+You'll be warned about disrupting SSH connections. Type `y` and press Enter.
+
+**Check status:**
+
+```bash{{ execute }}
+sudo ufw status verbose
+```
+
+**Example output:**
+
+```
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+New profiles: skip
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere
+80/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+```
+
+**Allow specific IP only for SSH:**
+
+```bash{{ copy }}
+sudo ufw delete allow 22/tcp
+sudo ufw allow from YOUR_IP to any port 22 proto tcp
+```
+
+Replace `YOUR_IP` with your actual IP address.
+
+### Fail2Ban - Automated Intrusion Prevention
+
+**Fail2Ban** monitors log files for repeated failed login attempts and automatically blocks the offending IP addresses.
+
+**Example:**
+- Attacker tries to SSH with wrong password 5 times
+- Fail2Ban detects this and blocks the attacker's IP for 10 minutes
+- After 10 minutes, IP is unblocked (unless they attack again)
+
+**Install Fail2Ban:**
+
+```bash{{ execute }}
+sudo apt install fail2ban -y
+```
+
+**Create local configuration:**
+
+```bash{{ execute }}
+sudo nano /etc/fail2ban/jail.local
+```
+
+**Add configuration:**
+
+```
+[DEFAULT]
+bantime = 600
+findtime = 600
+maxretry = 5
+destemail = your-email@example.com
+sendername = Fail2Ban
+
+[sshd]
+enabled = true
+port = 22
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+```
+
+**Configuration explained:**
+- `bantime = 600` = Ban for 600 seconds (10 minutes)
+- `findtime = 600` = Time window to count retries (10 minutes)
+- `maxretry = 3` = Ban after 3 failed attempts within findtime
+- `port = 22` = SSH port to protect (change if you changed SSH port)
+
+**Start and enable Fail2Ban:**
+
+```bash{{ execute }}
+sudo systemctl start fail2ban
+sudo systemctl enable fail2ban
+```
+
+**Check status:**
+
+```bash{{ execute }}
+sudo fail2ban-client status sshd
+```
+
+**Example output:**
+
+```
+Status for the jail: sshd
+|- Filter
+|  |- Currently failed: 0
+|  |- Total failed:     0
+|  `- File list:        /var/log/auth.log
+`- Actions
+   |- Currently banned: 0
+   |- Total banned:     0
+   `- Banned IP list:
+```
+
+**Unban an IP (if you accidentally ban yourself):**
+
+```bash{{ copy }}
+sudo fail2ban-client set sshd unbanip YOUR_IP
+```
+
+### Disable Unnecessary Services
+
+**List running services:**
+
+```bash{{ execute }}
+sudo systemctl list-unit-files --type=service --state=enabled
+```
+
+**Common services you might want to disable:**
+
+**Snapd (if you don't use Snap packages):**
+
+```bash{{ execute }}
+sudo systemctl disable snapd
+sudo systemctl stop snapd
+```
+
+**Check for other unnecessary services:**
+
+```bash{{ execute }}
+sudo systemctl list-unit-files --type=service --state=enabled | grep enabled
+```
+
+Disable any services you recognize and don't need.
+
+### Create Non-Root User
+
+**Best practice:** Don't use root for daily operations. Create a regular user with sudo privileges.
+
+**Create user:**
+
+```bash{{ execute }}
+adduser yourusername
+```
+
+Enter password and details.
+
+**Add to sudo group:**
+
+```bash{{ execute }}
+usermod -aG sudo yourusername
+```
+
+**What is sudo?**
+- **sudo** = "superuser do"
+- Allows regular users to run commands as root
+- More secure than using root directly (requires password, logged)
+
+**Add SSH key for new user:**
+
+```bash{{ execute }}
+# Switch to new user
+su - yourusername
+
+# Create .ssh directory
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Add public key
+nano ~/.ssh/authorized_keys
+# Paste your public key, save, exit
+
+chmod 600 ~/.ssh/authorized_keys
+```
+
+**Test SSH with new user:**
+
+```bash{{ copy }}
+ssh yourusername@your-server-ip
+```
+
+**Test sudo:**
+
+```bash{{ execute }}
+sudo apt update
+```
+
+Enter your password when prompted.
+
+**Disable root login entirely (after confirming new user works):**
+
+```bash{{ execute }}
+sudo nano /etc/ssh/sshd_config
+```
+
+Change:
+
+```
+PermitRootLogin no
+```
+
+Restart SSH:
+
+```bash{{ execute }}
+sudo systemctl restart sshd
+```
+
+Now only `yourusername` can log in, and must use sudo for admin tasks.
+
+---
+
+## 4.4 — API Token Security
+
+### Understanding API Tokens
+
+**API tokens** are like passwords for programmatic access to Hetzner Cloud. With an API token, you can create, modify, and delete resources using the CLI or custom scripts.
+
+**API token capabilities:**
+- Create/delete servers, volumes, networks, etc.
+- Read billing information
+- Manage firewalls and load balancers
+- Everything you can do in the Console
+
+**Risk:** If someone gets your API token, they can:
+- Delete all your infrastructure
+- Create expensive resources and run up your bill
+- Access server data
+- Read sensitive configuration
+
+**Protecting API tokens is critical!**
+
+### API Token Permissions
+
+When creating a token in Hetzner, you choose permissions:
+
+**Read-only:**
+- Can view resources
+- Cannot create, modify, or delete
+- Useful for monitoring scripts
+
+**Read & Write:**
+- Full control over resources
+- Should be carefully protected
+
+**Scoped tokens (if available):**
+- Limit to specific projects
+- Limit to specific resource types
+
+Always use the minimum permissions needed.
+
+### Creating API Tokens Securely
+
+**Via Console:**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Select your project
+3. Click **"Security"** in sidebar
+4. Click **"API Tokens"** tab
+5. Click **"Generate API Token"**
+6. Enter description (e.g., `ci-cd-pipeline`, `terraform-automation`, `monitoring-readonly`)
+7. Select permissions (Read or Read & Write)
+8. Click **"Generate API Token"**
+9. **IMMEDIATELY copy and save the token** - it won't be shown again!
+
+**Store securely:**
+
+**Don't:**
+- ❌ Commit to Git repositories
+- ❌ Email the token
+- ❌ Store in plain text files
+- ❌ Share in Slack/chat
+- ❌ Include in screenshots
+
+**Do:**
+- ✅ Use environment variables
+- ✅ Use secret management tools (HashiCorp Vault, AWS Secrets Manager)
+- ✅ Use CI/CD secret storage (GitHub Secrets, GitLab CI/CD variables)
+- ✅ Store in password manager if for personal use
+
+**Using environment variables:**
+
+```bash{{ copy }}
+# In your shell configuration (~/.bashrc or ~/.zshrc)
+export HCLOUD_TOKEN="your-token-here"
+
+# Now CLI uses it automatically
+hcloud server list
+```
+
+**For scripts:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+# Check if token is set
+if [ -z "$HCLOUD_TOKEN" ]; then
+    echo "Error: HCLOUD_TOKEN environment variable not set"
+    exit 1
+fi
+
+# Use token
+hcloud server create ...
+```
+
+### Token Rotation
+
+**Best practice:** Rotate (replace) API tokens periodically, especially for production systems.
+
+**Rotation process:**
+
+1. Create a new token with same permissions
+2. Update all systems/scripts to use new token
+3. Test to ensure everything works with new token
+4. Delete old token
+
+**Frequency:**
+- Production systems: Every 90 days
+- Personal projects: Annually or when needed
+- Immediately if token may have been compromised
+
+### Detecting Token Compromise
+
+**Signs your token may be compromised:**
+- Unexpected resources created/deleted
+- Unusual activity in audit logs
+- Unexpected bills
+- Resources in unfamiliar locations
+
+**If you suspect compromise:**
+
+1. **Immediately revoke the token:**
+   - Go to Security > API Tokens
+   - Delete the suspected token
+
+2. **Review audit logs:**
+   - Check what actions were taken
+   - Identify unauthorized resources
+
+3. **Delete unauthorized resources:**
+   - Remove any resources you didn't create
+
+4. **Create new token:**
+   - Generate new token with different value
+
+5. **Update all systems:**
+   - Update scripts, CI/CD, etc. with new token
+
+6. **Review security:**
+   - How was token leaked?
+   - Improve processes to prevent future leaks
+
+### Limiting Blast Radius with Projects
+
+Hetzner Cloud uses **projects** to organize resources. Each project has separate API tokens.
+
+**Strategy:** Use separate projects for different environments or applications.
+
+**Example structure:**
+
+```
+Company Account
+├── Project: production-website
+│   ├── Resources: web servers, databases
+│   └── API Token: production-token (Read & Write)
+│
+├── Project: staging-website
+│   ├── Resources: staging servers
+│   └── API Token: staging-token (Read & Write)
+│
+└── Project: development
+    ├── Resources: dev/test servers
+    └── API Token: dev-token (Read & Write)
+```
+
+**Benefit:** If `dev-token` is compromised, attacker can only affect development project, not production.
+
+---
+
+## 4.5 — GDPR and Data Protection Considerations
+
+### What is GDPR?
+
+**GDPR** (General Data Protection Regulation) is a European Union law that regulates how personal data must be protected.
+
+**Personal data** includes:
+- Names, email addresses, phone numbers
+- IP addresses, device IDs, cookies
+- Location data
+- Health information, financial data
+- Any data that can identify an individual
+
+**Key principles:**
+- Data must be processed lawfully and transparently
+- Collected for specific, legitimate purposes
+- Minimized (only collect what's needed)
+- Accurate and up-to-date
+- Stored securely
+- Retained only as long as necessary
+
+### Why Hetzner and GDPR
+
+**Hetzner advantages for GDPR compliance:**
+
+1. **EU-based company:**
+   - Subject to EU regulations
+   - Strong privacy culture
+   - No U.S. CLOUD Act concerns
+
+2. **EU data centers:**
+   - Germany (Falkenstein, Nuremberg, Helsinki)
+   - Finland (Helsinki)
+   - Data stays within EU (important for GDPR)
+
+3. **Data Processing Agreement (DPA):**
+   - Hetzner provides GDPR-compliant DPA
+   - Available in Hetzner Console under Legal Documents
+
+**Note:** Hetzner now has US data centers (Ashburn, Hillsboro), but these are subject to different regulations.
+
+### Data Residency Considerations
+
+**Data residency** means where your data is physically stored.
+
+**For EU users/customers:**
+- Use EU data centers (fsn1, nbg1, hel1)
+- Ensures GDPR compliance
+- Avoids cross-border data transfer issues
+
+**For US users/customers:**
+- Can use US data centers (ash, hil)
+- Faster latency for US users
+- Subject to US regulations
+
+**Mixed scenario:**
+If you have both EU and US users, consider:
+- Multi-region deployment
+- EU users → EU data center
+- US users → US data center
+- Data sovereignty maintained
+
+### Encryption Requirements
+
+**GDPR requires appropriate security measures, including encryption.**
+
+**Encryption in transit (data moving over network):**
+- Use HTTPS for web traffic (TLS/SSL certificates)
+- Use SSH for server access (encrypted by default)
+- Use VPN for private network access
+
+**Encryption at rest (data stored on disk):**
+Hetzner volumes are not encrypted by default. For sensitive data, you must implement encryption.
+
+**Option 1: LUKS encryption (Linux Unified Key Setup)**
+
+Full disk encryption for volumes.
+
+**Create encrypted volume:**
+
+```bash{{ execute }}
+# Install cryptsetup
+sudo apt install cryptsetup -y
+
+# Encrypt the volume
+sudo cryptsetup luksFormat /dev/sdb
+```
+
+You'll be asked to confirm (type `YES`) and enter a passphrase.
+
+**Open encrypted volume:**
+
+```bash{{ execute }}
+sudo cryptsetup open /dev/sdb encrypted-data
+```
+
+Enter passphrase.
+
+**Format and mount:**
+
+```bash{{ execute }}
+sudo mkfs.ext4 /dev/mapper/encrypted-data
+sudo mkdir -p /mnt/encrypted
+sudo mount /dev/mapper/encrypted-data /mnt/encrypted
+```
+
+Now `/mnt/encrypted` is fully encrypted. Data is encrypted at rest.
+
+**Close encrypted volume:**
+
+```bash{{ execute }}
+sudo umount /mnt/encrypted
+sudo cryptsetup close encrypted-data
+```
+
+**Option 2: Application-level encryption**
+
+Encrypt specific sensitive data before storing it.
+
+**Examples:**
+- Database column encryption
+- File encryption with GPG
+- Application-specific encryption libraries
+
+### Backup and Data Retention
+
+**GDPR Article 17:** Right to erasure ("right to be forgotten")
+
+Users can request their data be deleted. You must:
+
+1. **Have a process to delete user data:**
+   - From databases
+   - From backups
+   - From logs
+
+2. **Document retention periods:**
+   - How long you keep data
+   - Justification for retention
+   - Automated deletion after retention period
+
+**Example retention policy:**
+
+```
+- User account data: Retained while account is active
+- User content: Deleted within 30 days of account deletion request
+- Access logs: Retained for 90 days (security purposes)
+- Backups: Retained for 30 days, then deleted
+- Financial records: Retained for 7 years (legal requirement)
+```
+
+**Implement in practice:**
+
+```bash{{ execute }}
+# Script to delete old logs
+#!/bin/bash
+
+# Delete logs older than 90 days
+find /var/log/myapp/ -type f -mtime +90 -delete
+
+# Delete old backups
+find /mnt/backups/ -type f -mtime +30 -delete
+```
+
+Schedule with cron:
+
+```
+0 3 * * * /root/cleanup-old-data.sh
+```
+
+### Access Controls and Logging
+
+**GDPR Article 32:** Appropriate technical and organizational measures
+
+**Requirements:**
+- Limit access to personal data to authorized personnel only
+- Log access to personal data
+- Regular security audits
+
+**Implementation:**
+
+**1. Use separate users for different roles:**
+
+```bash{{ execute }}
+# Create application user (limited permissions)
+sudo adduser appuser
+
+# Application runs as appuser, not root
+# Can only access /var/www/app, not entire system
+```
+
+**2. Log access to sensitive data:**
+
+**Enable detailed logging:**
+
+```bash{{ execute }}
+# Log SSH access
+sudo nano /etc/ssh/sshd_config
+```
+
+Ensure:
+
+```
+LogLevel VERBOSE
+```
+
+**Monitor logs:**
+
+```bash{{ execute }}
+# View recent SSH logins
+sudo journalctl -u sshd | tail -n 50
+
+# View who accessed the system
+last -a | head -n 20
+```
+
+**3. Regular access reviews:**
+
+- Quarterly review of who has SSH access
+- Remove keys for former employees/contractors
+- Audit API token usage
+
+### Data Breach Notification
+
+**GDPR Article 33:** Breach notification within 72 hours
+
+If you discover a data breach (unauthorized access, data leak, etc.), you must:
+
+1. **Contain the breach:**
+   - Revoke compromised credentials
+   - Isolate affected systems
+
+2. **Assess impact:**
+   - What data was accessed?
+   - How many users affected?
+   - What's the risk to individuals?
+
+3. **Notify authorities:**
+   - Within 72 hours of discovery
+   - Via your country's Data Protection Authority (DPA)
+
+4. **Notify affected users:**
+   - If high risk to their rights and freedoms
+   - Provide clear information about the breach
+
+**Prevention:**
+- Regular security audits
+- Intrusion detection (Fail2Ban, log monitoring)
+- Encrypted data (reduces risk if breached)
+- Incident response plan
+
+---
+
+## Lab 4: Hardening and Securing a Server
+
+**Time:** 45-60 minutes
+**Cost:** ~$0.05-0.10 (if deleted immediately after)
+
+### Lab Objectives
+
+By the end of this lab, you will have:
+
+1. Created a secure server with SSH key-only authentication
+2. Configured UFW firewall on the server
+3. Installed and configured Fail2Ban
+4. Created and applied a Hetzner Cloud Firewall
+5. Disabled root login and created a sudo user
+6. Tested the security configuration
+7. Validated that password authentication is disabled
+
+### Step 1: Create Server with SSH Key
+
+```bash{{ copy }}
+hcloud server create \
+  --name secure-lab-server \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+```
+
+Wait for server to be created.
+
+**Get IP address:**
+
+```bash{{ execute }}
+hcloud server describe secure-lab-server | grep "Public IPv4"
+```
+
+**Test SSH access:**
+
+```bash{{ copy }}
+ssh root@server-ip
+```
+
+You should connect via SSH key without password.
+
+### Step 2: Update System
+
+```bash{{ execute }}
+# Update package lists and upgrade
+sudo apt update && sudo apt upgrade -y
+
+# Install unattended-upgrades
+sudo apt install unattended-upgrades -y
+sudo dpkg-reconfigure --priority=low unattended-upgrades
+```
+
+Select **Yes** for automatic updates.
+
+### Step 3: Disable Password Authentication
+
+```bash{{ execute }}
+# Edit SSH config
+sudo nano /etc/ssh/sshd_config
+```
+
+**Find and set these values:**
+
+```
+PermitRootLogin prohibit-password
+PasswordAuthentication no
+PubkeyAuthentication yes
+```
+
+Save (`Ctrl+O`, Enter) and exit (`Ctrl+X`).
+
+**Restart SSH:**
+
+```bash{{ execute }}
+sudo systemctl restart sshd
+```
+
+**Keep this terminal open! Test in a new terminal before closing.**
+
+### Step 4: Configure UFW Firewall
+
+In the same SSH session:
+
+```bash{{ execute }}
+# Install UFW
+sudo apt install ufw -y
+
+# Default policies
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+
+# Allow SSH (BEFORE enabling!)
+sudo ufw allow 22/tcp
+
+# Allow HTTP and HTTPS
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+
+# Enable UFW
+sudo ufw enable
+```
+
+Type `y` when prompted.
+
+**Verify:**
+
+```bash{{ execute }}
+sudo ufw status verbose
+```
+
+**Expected output:**
+
+```
+Status: active
+Logging: on (low)
+Default: deny (incoming), allow (outgoing), disabled (routed)
+
+To                         Action      From
+--                         ------      ----
+22/tcp                     ALLOW IN    Anywhere
+80/tcp                     ALLOW IN    Anywhere
+443/tcp                    ALLOW IN    Anywhere
+```
+
+### Step 5: Install and Configure Fail2Ban
+
+```bash{{ execute }}
+# Install Fail2Ban
+sudo apt install fail2ban -y
+
+# Create local configuration
+sudo nano /etc/fail2ban/jail.local
+```
+
+**Add this configuration:**
+
+```
+[DEFAULT]
+bantime = 600
+findtime = 600
+maxretry = 5
+
+[sshd]
+enabled = true
+port = 22
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+```
+
+Save and exit.
+
+**Start Fail2Ban:**
+
+```bash{{ execute }}
+sudo systemctl start fail2ban
+sudo systemctl enable fail2ban
+```
+
+**Check status:**
+
+```bash{{ execute }}
+sudo fail2ban-client status sshd
+```
+
+### Step 6: Create Non-Root User
+
+```bash{{ execute }}
+# Create new user
+sudo adduser labuser
+```
+
+**Enter password and details.** Use a strong password!
+
+**Add to sudo group:**
+
+```bash{{ execute }}
+sudo usermod -aG sudo labuser
+```
+
+**Set up SSH key for new user:**
+
+```bash{{ execute }}
+# Switch to new user
+sudo su - labuser
+
+# Create .ssh directory
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Exit to root
+exit
+
+# Copy authorized_keys from root to new user
+sudo cp /root/.ssh/authorized_keys /home/labuser/.ssh/
+sudo chown labuser:labuser /home/labuser/.ssh/authorized_keys
+sudo chmod 600 /home/labuser/.ssh/authorized_keys
+```
+
+**Test SSH with new user (in new terminal):**
+
+```bash{{ copy }}
+ssh labuser@server-ip
+```
+
+Should work!
+
+**Test sudo:**
+
+```bash{{ execute }}
+sudo apt update
+```
+
+Enter password. Should work!
+
+### Step 7: Disable Root Login
+
+After confirming `labuser` SSH access works:
+
+```bash{{ execute }}
+# As labuser, edit SSH config
+sudo nano /etc/ssh/sshd_config
+```
+
+Change:
+
+```
+PermitRootLogin no
+```
+
+**Restart SSH:**
+
+```bash{{ execute }}
+sudo systemctl restart sshd
+```
+
+**Test (in new terminal):**
+
+```bash{{ copy }}
+# This should now FAIL:
+ssh root@server-ip
+```
+
+```bash{{ copy }}
+# This should work:
+ssh labuser@server-ip
+```
+
+### Step 8: Create Hetzner Cloud Firewall
+
+Exit SSH, back to your local machine.
+
+**Create firewall:**
+
+```bash{{ execute }}
+hcloud firewall create --name secure-lab-firewall
+```
+
+**Add rules (allow SSH from your IP only):**
+
+First, find your IP:
+
+```bash{{ execute }}
+curl ifconfig.me
+```
+
+**Add rules:**
+
+```bash{{ execute }}
+# Replace YOUR_IP with the result from above
+hcloud firewall add-rule secure-lab-firewall --direction in --protocol tcp --port 22 --source-ips YOUR_IP/32
+
+# Allow HTTP from anywhere
+hcloud firewall add-rule secure-lab-firewall --direction in --protocol tcp --port 80 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Allow HTTPS from anywhere
+hcloud firewall add-rule secure-lab-firewall --direction in --protocol tcp --port 443 --source-ips 0.0.0.0/0 --source-ips ::/0
+
+# Allow ICMP (ping)
+hcloud firewall add-rule secure-lab-firewall --direction in --protocol icmp --source-ips 0.0.0.0/0 --source-ips ::/0
+```
+
+**Apply to server:**
+
+```bash
+hcloud firewall apply-to-resource secure-lab-firewall --type server --server secure-lab-server
+```
+
+**Verify:**
+
+```bash{{ execute }}
+hcloud firewall describe secure-lab-firewall
+```
+
+### Step 9: Test Security Configuration
+
+**Test 1: SSH access from your IP (should work):**
+
+```bash{{ copy }}
+ssh labuser@server-ip
+```
+
+Should connect successfully.
+
+**Test 2: Ping (should work):**
+
+```bash{{ copy }}
+ping server-ip
+```
+
+Should get responses.
+
+**Test 3: Check UFW status:**
+
+```bash{{ copy }}
+ssh labuser@server-ip
+sudo ufw status
+```
+
+Should show active with rules.
+
+**Test 4: Check Fail2Ban status:**
+
+```bash{{ execute }}
+sudo fail2ban-client status sshd
+```
+
+Should show active.
+
+**Test 5: Verify password auth is disabled:**
+
+Try to SSH with password (from different machine or VPN if you have one):
+
+```bash{{ copy }}
+ssh -o PreferredAuthentications=password labuser@server-ip
+```
+
+Should be rejected with "Permission denied".
+
+**Test 6: Test blocked port:**
+
+Port 3306 (MySQL) should be blocked:
+
+```bash{{ copy }}
+nc -zv server-ip 3306
+```
+
+Should timeout or show connection refused.
+
+### Step 10: Security Audit Checklist
+
+SSH into your server and verify:
+
+```bash{{ copy }}
+ssh labuser@server-ip
+```
+
+**1. Password authentication disabled:**
+
+```bash{{ execute }}
+sudo grep -i PasswordAuthentication /etc/ssh/sshd_config
+```
+
+Should show `PasswordAuthentication no`.
+
+**2. Root login disabled:**
+
+```bash{{ execute }}
+sudo grep -i PermitRootLogin /etc/ssh/sshd_config
+```
+
+Should show `PermitRootLogin no`.
+
+**3. UFW enabled:**
+
+```bash{{ execute }}
+sudo ufw status
+```
+
+Should show `Status: active`.
+
+**4. Fail2Ban active:**
+
+```bash{{ execute }}
+sudo systemctl status fail2ban
+```
+
+Should show `active (running)`.
+
+**5. Automatic updates enabled:**
+
+```bash{{ execute }}
+sudo systemctl status unattended-upgrades
+```
+
+Should show `active (running)`.
+
+**6. System up to date:**
+
+```bash{{ execute }}
+sudo apt update
+sudo apt list --upgradable
+```
+
+Should show no upgradable packages (or only non-security updates).
+
+### Step 11: Cleanup
+
+Exit SSH.
+
+**Delete all resources:**
+
+```bash{{ execute }}
+# Delete firewall
+hcloud firewall delete secure-lab-firewall
+
+# Delete server
+hcloud server delete secure-lab-server
+```
+
+Confirm deletions.
+
+---
+
+## Lab 4 Summary
+
+**What you accomplished:**
+
+✅ Created server with SSH key authentication
+✅ Disabled password authentication
+✅ Configured UFW firewall on server
+✅ Installed and configured Fail2Ban
+✅ Created Hetzner Cloud Firewall with restrictive rules
+✅ Created non-root sudo user
+✅ Disabled root login
+✅ Enabled automatic security updates
+✅ Tested all security configurations
+✅ Performed security audit
+
+**Security layers implemented:**
+
+1. **Authentication:** SSH keys only, no passwords
+2. **Access control:** Non-root user with sudo
+3. **Network firewall (Hetzner):** Blocks unwanted traffic before reaching server
+4. **Server firewall (UFW):** Additional protection on server itself
+5. **Intrusion prevention (Fail2Ban):** Automatically blocks attackers
+6. **Patch management:** Automatic security updates
+
+**This is a production-ready security baseline!**
+
+---
+
+## Module 4 Quiz
+
+**1. What is the main advantage of SSH key authentication over passwords?**
+
+a) It's faster to type
+b) Much stronger cryptographically and cannot be brute-forced
+c) It works better over slow networks
+d) It's required by Hetzner
+
+<details>
+<summary>Answer</summary>
+b) Much stronger cryptographically and cannot be brute-forced
+</details>
+
+**2. Which file contains the SSH server configuration on Ubuntu?**
+
+a) `/etc/ssh/ssh_config`
+b) `/etc/sshd.conf`
+c) `/etc/ssh/sshd_config`
+d) `/etc/ssh/config`
+
+<details>
+<summary>Answer</summary>
+c) `/etc/ssh/sshd_config`
+</details>
+
+**3. What does UFW stand for?**
+
+a) Universal Firewall
+b) Uncomplicated Firewall
+c) Ubuntu Firewall
+d) Unified Firewall Wrapper
+
+<details>
+<summary>Answer</summary>
+b) Uncomplicated Firewall
+</details>
+
+**4. What does Fail2Ban do?**
+
+a) Automatically installs security updates
+b) Monitors logs and bans IPs with repeated failed login attempts
+c) Creates backups
+d) Encrypts network traffic
+
+<details>
+<summary>Answer</summary>
+b) Monitors logs and bans IPs with repeated failed login attempts
+</details>
+
+**5. Which SSH config setting disables password authentication?**
+
+a) `PasswordLogin no`
+b) `AllowPasswords no`
+c) `PasswordAuthentication no`
+d) `DisablePasswords yes`
+
+<details>
+<summary>Answer</summary>
+c) `PasswordAuthentication no`
+</details>
+
+**6. Why should you restrict SSH access to specific IPs in the firewall?**
+
+a) It makes SSH faster
+b) Reduces attack surface by preventing connections from unauthorized locations
+c) It's required for GDPR
+d) It saves bandwidth
+
+<details>
+<summary>Answer</summary>
+b) Reduces attack surface by preventing connections from unauthorized locations
+</details>
+
+**7. What is the purpose of creating a non-root user with sudo privileges?**
+
+a) It's required by Ubuntu
+b) Reduces risk of accidental system damage and provides accountability
+c) It makes the system faster
+d) It's cheaper
+
+<details>
+<summary>Answer</summary>
+b) Reduces risk of accidental system damage and provides accountability
+</details>
+
+**8. How should you store Hetzner API tokens?**
+
+a) In your Git repository for easy access
+b) In environment variables or secure secret management tools
+c) In a text file on your desktop
+d) In Slack for team access
+
+<details>
+<summary>Answer</summary>
+b) In environment variables or secure secret management tools
+</details>
+
+---
+
+## Troubleshooting Guide
+
+### Problem: Locked out after disabling password authentication
+
+**Symptoms:**
+- Can't SSH to server
+- Password rejected or key not working
+
+**Solutions:**
+
+1. **Use Hetzner Console (VNC):**
+   - Click on server in Hetzner Console
+   - Click "Console" button (browser-based terminal)
+   - Log in with username/password
+   - Fix SSH configuration
+
+2. **Re-enable password auth temporarily:**
+   ```bash{{ execute }}
+   sudo nano /etc/ssh/sshd_config
+   # Change: PasswordAuthentication yes
+   sudo systemctl restart sshd
+   ```
+{{ execute }}
+
+3. **Add correct SSH key:**
+   ```bash
+   mkdir -p ~/.ssh
+   chmod 700 ~/.ssh
+   nano ~/.ssh/authorized_keys
+   # Paste your public key
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+{{ execute }}
+
+4. **Test, then disable passwords again**
+
+### Problem: UFW blocks legitimate traffic
+
+**Symptoms:**
+- Cannot access web server after enabling UFW
+- Application doesn't work
+
+**Solution:**
+
+```bash
+# Check UFW rules
+sudo ufw status numbered
+
+# Add rule for needed port
+sudo ufw allow PORT/tcp
+
+# Or delete blocking rule
+sudo ufw delete RULE_NUMBER
+```
+
+### Problem: Fail2Ban banned your own IP
+
+**Symptoms:**
+- SSH connection refused
+- Recently failed to log in a few times
+
+**Solution:**
+
+```bash{{ copy }}
+# Via VNC/Console:
+sudo fail2ban-client status sshd
+sudo fail2ban-client set sshd unbanip YOUR_IP
+
+# Prevent future bans by adding to whitelist
+sudo nano /etc/fail2ban/jail.local
+```
+
+Add under `[DEFAULT]`:
+
+```
+ignoreip = 127.0.0.1/8 YOUR_IP/32
+```
+
+Restart Fail2Ban:
+
+```bash{{ execute }}
+sudo systemctl restart fail2ban
+```
+
+---
+
+## Additional Resources
+
+**SSH Security:**
+- [SSH.com Academy](https://www.ssh.com/academy/ssh)
+- [Ubuntu SSH Documentation](https://help.ubuntu.com/community/SSH)
+
+**Firewall Configuration:**
+- [UFW Documentation](https://help.ubuntu.com/community/UFW)
+- [Hetzner Firewall Docs](https://docs.hetzner.com/cloud/firewalls/getting-started/creating-a-firewall/)
+
+**Fail2Ban:**
+- [Fail2Ban Manual](https://www.fail2ban.org/wiki/index.php/MANUAL_0_8)
+- [DigitalOcean Fail2Ban Guide](https://www.digitalocean.com/community/tutorials/how-to-protect-ssh-with-fail2ban-on-ubuntu)
+
+**GDPR Compliance:**
+- [GDPR Official Text](https://gdpr-info.eu/)
+- [Hetzner GDPR Information](https://www.hetzner.com/legal/privacy-policy)
+
+**Linux Security:**
+- [Linux Security Hardening Guide](https://www.cisecurity.org/cis-benchmarks/)
+
+---
+
+## What's Next?
+
+Congratulations! You now understand how to properly secure your Hetzner Cloud infrastructure.
+
+**You learned:**
+- SSH key authentication and management
+- Network security with Hetzner Firewalls and UFW
+- Server hardening (updates, Fail2Ban, non-root users)
+- API token security
+- GDPR and data protection considerations
+
+**Next Module:** [Module 5 - Scaling & Resource Optimization](./module-05-scaling.mdcl)
+
+In Module 5, you'll learn how to scale resources up and down, optimize costs, and efficiently manage growing infrastructure.
+
+---
+
+**Questions or issues?** Check the [troubleshooting guide](#troubleshooting-guide) above or visit the [Hetzner Community Forum](https://community.hetzner.com/).

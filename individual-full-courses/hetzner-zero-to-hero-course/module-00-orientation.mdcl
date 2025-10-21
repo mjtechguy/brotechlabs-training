@@ -1,0 +1,898 @@
+# Module 0: Orientation & Fundamentals
+
+Welcome to Hetzner Cloud! This module introduces you to Hetzner Cloud, helps you create an account, and gets you comfortable with the basics.
+
+`This module is for complete beginners - we explain everything from the ground up` {{ note }}
+
+---
+
+## Module Overview
+
+**Time:** 2 hours
+
+**What you'll learn:**
+- What Hetzner Cloud is and how it works
+- Different server types and when to use them
+- How to create an account and navigate the console
+- How to install and use the Hetzner CLI
+
+**What you'll build:**
+- Hetzner Cloud account
+- Project setup
+- CLI configuration
+
+**Cost:** €0 (~$0.00)-1 (just exploring, no servers yet)
+
+---
+
+## 0.1: What is Hetzner Cloud?
+
+### Understanding Cloud Computing
+
+**Cloud computing** = Renting computers (servers) over the internet instead of buying and maintaining your own physical hardware.
+
+**Simple analogy:**
+- **Traditional:** You buy a computer, keep it at home, pay for electricity, maintain it
+- **Cloud:** You rent a computer from a company, they keep it in their data center, you access it over the internet
+
+**Benefits of cloud computing:**
+- No upfront hardware costs
+- Pay only for what you use
+- Scale up or down easily
+- No maintenance headaches
+- Access from anywhere
+
+### What is Hetzner Cloud?
+
+**Hetzner Cloud** is a company that provides cloud computing services.
+
+**Founded:** 1997 in Germany
+**Cloud service launched:** 2018
+**Headquarters:** Gunzenhausen, Germany
+
+**What Hetzner provides:**
+- **Servers (VPS)** - Virtual computers you can rent by the hour
+- **Storage (Volumes)** - Additional disk space you can attach
+- **Networking** - Connect your servers together securely
+- **Load Balancers** - Distribute traffic across multiple servers
+
+### Hetzner's Architecture
+
+**Data Centers (locations where servers are physically located) - October 2025:**
+
+| Location | City | Region Code | Ownership | Cloud Available |
+|----------|------|-------------|-----------|-----------------|
+| Germany | Falkenstein | fsn1 | Owned | ✅ All servers |
+| Germany | Nuremberg | nbg1 | Owned | ✅ All servers |
+| Finland | Helsinki/Tuusula | hel1 | Owned | ✅ All servers |
+| USA | Ashburn, VA | ash | Colocation | ✅ AMD servers only |
+| USA | Hillsboro, OR | hil | Colocation | ✅ AMD servers only |
+| Singapore | Singapore | sin | Colocation | ✅ AMD servers only |
+
+**Hetzner owns data center parks in:**
+- Germany (Nuremberg, Falkenstein)
+- Finland (Tuusula)
+
+**Colocation (using space in other data centers):**
+- USA (Ashburn, Hillsboro)
+- Singapore
+
+**Why multiple locations?**
+- **Latency** - Servers closer to your users = faster response
+- **Compliance** - Some data must stay in specific countries (GDPR)
+- **Redundancy** - If one location has issues, others stay running
+- **Global reach** - Now serving Europe, North America, and Asia
+
+**New in 2025:**
+- Hillsboro, Oregon (West Coast USA) added
+- Singapore now available for all AMD cloud servers
+
+**For US-based users (this course):**
+We'll primarily use the **US data centers:**
+- **Ashburn, VA (ash)** - East Coast USA
+- **Hillsboro, OR (hil)** - West Coast USA
+
+**Note:** US locations currently support CPX (AMD) and CAX (Arm) servers, but not CX (Cost-Optimized) servers.
+
+### Hetzner's Pricing Philosophy
+
+**What makes Hetzner different:**
+
+**1. Transparent pricing**
+- No hidden fees
+- Simple, clear pricing page
+- Hourly billing (pay per hour, not per month minimum)
+
+**2. Affordable**
+- Often 50-70% cheaper than AWS, Google Cloud, Azure
+- Example: Basic server €4.15 (~$4.52)/month vs AWS ~€15 (~$16.35)/month
+
+**3. No surprises**
+- Traffic/bandwidth included (up to 20TB!)
+- Snapshots and backups: clear, predictable costs
+- No egress fees (data leaving their network)
+
+**Pricing example (as of October 2025):**
+
+Hetzner restructured cloud plans in October 2025 with new Cost-Optimized (CX Gen3) and Regular Performance options:
+
+**Cost-Optimized Plans (CX Gen3 - older hardware, Intel or AMD):**
+
+| Server Type | vCPUs | RAM | Storage | Price/month |
+|-------------|-------|-----|---------|-------------|
+| CX23 | 2 | 4 GB | 40 GB | €3.49 (~$3.80) |
+| CX33 | 4 | 8 GB | 80 GB | €5.49 (~$6.00) |
+| CX42 | 8 | 16 GB | 160 GB | €16.40 (~$17.85) |
+| CX52 | 16 | 32 GB | 320 GB | €32.40 (~$35.30) |
+
+**Regular Performance (CPX - AMD EPYC-Genoa, 30%+ faster - recommended):**
+
+| Server Type | vCPUs | RAM | Storage | Price/month |
+|-------------|-------|-----|---------|-------------|
+| CPX11 | 2 | 2 GB | 40 GB | €4.51 (~$4.90) |
+| CPX21 | 3 | 4 GB | 80 GB | €8.21 (~$9.00) |
+| CPX31 | 4 | 8 GB | 160 GB | €14.28 (~$15.55) |
+| CPX41 | 8 | 16 GB | 240 GB | €27.98 (~$30.50) |
+| CPX51 | 16 | 32 GB | 360 GB | €54.98 (~$60.00) |
+
+**Arm64 Plans (CAX - Ampere Altra, best value):**
+
+| Server Type | vCPUs | RAM | Storage | Price/month |
+|-------------|-------|-----|---------|-------------|
+| CAX11 | 2 | 4 GB | 40 GB | €3.92 (~$4.25) |
+| CAX21 | 4 | 8 GB | 80 GB | €6.49 (~$7.10) |
+| CAX31 | 8 | 16 GB | 160 GB | €12.00 (~$13.10) |
+| CAX41 | 16 | 32 GB | 320 GB | €23.79 (~$25.90) |
+
+**All plans include:**
+- 20 TB traffic included
+- 1 IPv4 address
+- Hourly billing (monthly price cap)
+
+*Check current pricing: https://www.hetzner.com/cloud*
+
+### Key Terms to Know
+
+**VPS (Virtual Private Server)**
+- A virtual computer running on physical hardware
+- You get full control like it's your own computer
+- Shares physical hardware with other VPS instances
+- Also called: instance, server, droplet (DigitalOcean), EC2 (AWS)
+
+**vCPU (Virtual Central Processing Unit)**
+- Processing power (the "brain" of the computer)
+- More vCPUs = more processing capability
+- 1 vCPU = 1 virtual core
+
+**RAM (Random Access Memory)**
+- Temporary memory for running programs
+- More RAM = can run more programs simultaneously
+- Measured in GB (gigabytes)
+
+**Storage/Disk**
+- Space for files, OS, applications
+- Measured in GB or TB (terabytes)
+- Like the hard drive on your computer
+
+**Bandwidth/Traffic**
+- Data transferred to/from your server
+- Measured in GB or TB
+- Hetzner includes up to 20TB free per server
+
+---
+
+## 0.2: Comparing Server Types (CX, CPX, CCX, CAX)
+
+Hetzner offers different server "types" - think of these as different computer models with different hardware inside.
+
+### Server Type Families
+
+**CX - Cost-Optimized (Shared Intel/AMD) - NEW October 2025**
+- **What:** Shared CPU cores on older hardware (Intel or AMD, depending on availability)
+- **Generation:** CX Gen3 - based on older hardware that previously powered CX Gen1/Gen2 and CPX Gen1
+- **Shared means:** Your vCPU shares physical CPU cores with other users
+- **When to use:** Learning, development, testing, cost-sensitive projects
+- **Price:** Most affordable (starts at €3.49 (~$3.80)/month!)
+- **Performance:** Good for most non-production use cases
+- **Example:** Personal blog, learning projects, staging environments
+- **Note:** 50% cheaper than Regular Performance plans
+
+**CPX - Regular Performance (Shared AMD EPYC-Genoa) - UPGRADED October 2025**
+- **What:** Shared AMD EPYC-Genoa CPUs (latest generation processors)
+- **Generation:** Powered by newest AMD EPYC-Genoa processors
+- **Performance boost:** 30%+ faster disk and network performance vs older plans
+- **When to use:** Production websites, applications needing consistent performance
+- **Price:** Mid-range
+- **Performance:** Significantly better than CX for CPU-intensive tasks
+- **Example:** WordPress site with traffic, small e-commerce, production APIs
+- **Note:** Always runs on most recent hardware generation available
+
+**CCX - Dedicated vCPU (AMD EPYC)**
+- **What:** Dedicated CPU cores (not shared!)
+- **Dedicated means:** You get entire physical CPU cores just for you
+- **When to use:** Production applications, databases, high-traffic sites
+- **Price:** More expensive
+- **Performance:** Consistent, predictable, high performance
+- **Example:** E-commerce site, production API, database server
+
+**CAX - Arm64 (Ampere Altra)**
+- **What:** Arm-based processors (different architecture)
+- **Arm means:** Different CPU architecture (like Apple M1/M2 chips)
+- **When to use:** Energy-efficient workloads, specific Arm software
+- **Price:** Very affordable for the performance
+- **Performance:** Excellent energy efficiency, good performance/price
+- **Example:** Container workloads, API servers, static site hosting
+- **Note:** Software must support Arm64 (most modern software does)
+
+### Shared vs Dedicated CPUs
+
+**Shared CPUs (CX, CPX, CAX):**
+
+**How it works:**
+```
+Physical CPU has 16 cores
+├─ Your VPS gets 2 vCPUs (virtual cores)
+├─ Another user's VPS gets 2 vCPUs
+├─ Another user's VPS gets 2 vCPUs
+└─ And so on...
+```
+
+**Pros:**
+- Much cheaper
+- Fine for most workloads
+- Good performance most of the time
+
+**Cons:**
+- Performance can vary (if neighbors use a lot of CPU)
+- Not ideal for 24/7 high-load applications
+
+**Dedicated CPUs (CCX):**
+
+**How it works:**
+```
+Physical CPU has 16 cores
+└─ Your VPS gets 4 cores EXCLUSIVELY
+   (no sharing with anyone!)
+```
+
+**Pros:**
+- Consistent, predictable performance
+- No "noisy neighbors" problem
+- Ideal for production workloads
+
+**Cons:**
+- More expensive
+- Might be overkill for small projects
+
+### Which Server Type Should You Choose?
+
+**Decision flowchart (for US regions):**
+
+```
+Are you just learning/testing?
+└─ Yes → CPX11 (affordable, good for learning in US)
+└─ No ↓
+
+Is this a production application with paying customers?
+└─ Yes → CCX (dedicated CPU for reliability)
+└─ No ↓
+
+Do you need moderate resources for production?
+└─ Yes → CPX21 or CPX31 (great performance)
+└─ No ↓
+
+Are you running Arm-compatible workloads?
+└─ Yes → CAX (great price/performance)
+└─ No → CPX series (best option for US)
+```
+
+**Note:** CX (Cost-Optimized) servers are NOT available in US data centers. Use CPX instead.
+
+**Recommendations by use case in US regions (October 2025):**
+
+| Use Case | Recommended | Why |
+|----------|-------------|-----|
+| Learning Hetzner (US) | CPX11 | Affordable (~$5-6/mo), good for learning |
+| Personal website (US) | CPX21 | Good performance, affordable |
+| Development server (US) | CPX11 or CAX11 | CPX for x86, CAX for Arm workloads |
+| WordPress blog (low traffic) | CPX21 | AMD Genoa performance |
+| WordPress blog (production) | CPX31 | Better performance for traffic |
+| Production app | CPX31 or CCX13+ | Consistent performance |
+| Database server | CCX21+ | Dedicated CPU for reliability |
+| High-traffic site | CCX31+ | Dedicated CPU essential |
+| Arm-compatible workloads | CAX11 or CAX21 | Excellent price/performance |
+
+**Important for US users:** CX (Cost-Optimized) plans are only available in European data centers. In US regions (Ashburn, Hillsboro), use CPX or CAX servers.
+
+### Performance Comparison
+
+**Approximate performance (not official benchmarks):**
+
+| Type | Single-Core | Multi-Core | Cost Efficiency |
+|------|-------------|------------|-----------------|
+| CX | ⭐⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| CPX | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ |
+| CCX | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐ |
+| CAX | ⭐⭐⭐⭐ | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+
+---
+
+## 0.3: Account Creation and Console Tour
+
+Time to create your Hetzner Cloud account!
+
+### Step 1: Create Hetzner Account
+
+Visit: https://accounts.hetzner.com/signUp
+
+`Click the link above or type it into your browser` {{ copy }}
+
+**Fill in the form:**
+- Email address (use a real one - you'll verify it)
+- Password (strong password recommended)
+- Accept terms of service
+
+Click "Sign Up"
+
+**Verify your email:**
+1. Check your email inbox
+2. Find email from Hetzner
+3. Click verification link
+4. You're verified!
+
+### Step 2: Add Payment Method
+
+Before you can create servers, you need to add a payment method.
+
+**Log in:** https://accounts.hetzner.com/login
+
+**Add payment method:**
+1. Go to "Billing" (left sidebar)
+2. Click "Payment Methods"
+3. Click "Add Payment Method"
+4. Choose Credit Card or PayPal
+5. Enter details
+6. Save
+
+**Why payment is required:**
+- Prevents spam/abuse
+- Enables instant server creation
+- You only pay for what you use
+- Set billing alerts to control costs
+
+**Billing is hourly:**
+- If you create a €4.15 (~$4.52)/month server and delete it after 1 hour
+- You only pay: €4.15 (~$4.52) / 730 hours ≈ €0.006 (~$0.01) (less than 1 cent!)
+
+### Step 3: Create Your First Project
+
+Hetzner organizes resources into **Projects**.
+
+**Project** = A container for organizing related resources (servers, networks, etc.)
+
+**Think of projects like folders:**
+```
+Your Hetzner Account
+├── Project: Personal Website
+│   ├── Server: web-server
+│   └── Volume: website-data
+├── Project: Client Work
+│   ├── Server: client-app
+│   └── Server: client-db
+└── Project: Learning/Testing
+    └── Server: test-server
+```
+
+**Create a project:**
+
+1. Go to Hetzner Cloud Console: https://console.hetzner.cloud/
+2. Click "New Project"
+3. Name: "Learning Hetzner" (or whatever you want)
+4. Click "Create Project"
+
+You're now inside your project!
+
+### Step 4: Console Tour
+
+Let's explore the Hetzner Cloud Console (web interface).
+
+**Left Sidebar (main navigation):**
+
+**Servers**
+- View all your servers
+- Create new servers
+- Manage existing servers
+
+**Volumes**
+- Additional storage you can attach to servers
+- Like external hard drives
+
+**Images**
+- Snapshots of servers
+- Custom OS images
+
+**Networks**
+- Private networks for server-to-server communication
+
+**Firewalls**
+- Security rules (what traffic is allowed)
+
+**Load Balancers**
+- Distribute traffic across multiple servers
+
+**Floating IPs**
+- IP addresses that can move between servers
+
+**SSH Keys**
+- Secure keys for accessing servers
+
+**Certificates**
+- SSL/TLS certificates for HTTPS
+
+**Top Bar:**
+
+**Project Selector** (dropdown)
+- Switch between projects
+- Create new projects
+
+**User Menu** (your name/icon)
+- Account settings
+- Billing
+- API tokens
+- Logout
+
+### Step 5: Understanding API Tokens
+
+**API Token** = A password for programs to access your Hetzner account
+
+**Why you need one:**
+- To use the Hetzner CLI (command-line tool)
+- To automate tasks
+- To integrate with other tools
+
+**How to create an API token:**
+
+1. In console, click your name (top right)
+2. Click "Security"
+3. Click "API Tokens"
+4. Click "Generate API Token"
+5. Name: "My First Token" or "CLI Access"
+6. Permissions: Read & Write (for full access)
+7. Click "Generate Token"
+
+**IMPORTANT:** Copy the token immediately!
+- It's shown only once
+- If you lose it, you have to create a new one
+- Store it somewhere safe (password manager recommended)
+
+Your token looks like: `abc123xyz789def456...` (long random string)
+
+**Security note:**
+- Treat API tokens like passwords
+- Never share them publicly
+- Never commit them to git repositories
+- Regenerate if compromised
+
+---
+
+## 0.4: Installing and Using the Hetzner CLI
+
+The **Hetzner CLI (hcloud)** is a command-line tool for managing Hetzner Cloud resources.
+
+**CLI** = Command Line Interface (text-based commands instead of clicking in a web browser)
+
+**Why use CLI instead of Console?**
+- Faster once you know the commands
+- Automatable (scripts!)
+- More powerful (can do everything API can do)
+- Professional workflow
+
+### Step 1: Install hcloud CLI
+
+Choose your operating system:
+
+**macOS (using Homebrew):**
+
+First, install Homebrew if you don't have it: https://brew.sh
+
+```bash{{ execute }}
+brew install hcloud
+```
+
+**Linux (using download script):**
+
+```bash{{ execute }}
+curl -fsSL https://raw.githubusercontent.com/hetznercloud/cli/main/scripts/install.sh | sh
+```
+
+**Windows (using Scoop):**
+
+First, install Scoop: https://scoop.sh
+
+```bash{{ execute }}
+scoop install hcloud
+```
+
+**Or download directly:**
+- Visit: https://github.com/hetznercloud/cli/releases
+- Download the version for your OS
+- Extract and move to a directory in your PATH
+
+### Step 2: Verify Installation
+
+`hcloud version` {{ execute }}
+
+You should see something like:
+```
+hcloud version 1.53.0
+```
+
+(Version 1.53.0 is current as of October 2025)
+
+If you get "command not found", the installation didn't work - try again or check the troubleshooting section.
+
+### Step 3: Configure Authentication
+
+Tell hcloud to use your API token:
+
+`hcloud context create my-project` {{ execute }}
+
+It will ask: **Token:**
+
+Paste your API token (from step 0.3.5) and press Enter.
+
+**What just happened?**
+- You created a "context" named "my-project"
+- A context stores your API token and active project
+- You can have multiple contexts for different projects
+
+**Verify it worked:**
+
+`hcloud context list` {{ execute }}
+
+Should show:
+```
+ACTIVE   NAME
+*        my-project
+```
+
+The `*` means this is your active context.
+
+### Step 4: Test the CLI
+
+Let's run some commands to make sure everything works!
+
+**List available server types:**
+
+`hcloud server-type list` {{ execute }}
+
+You should see a table like:
+```
+ID   NAME    CORES   MEMORY      DISK   STORAGE TYPE
+1    cx11    1       2.0 GB      20 GB  local
+3    cx21    2       4.0 GB      40 GB  local
+...
+```
+
+**List available locations (data centers):**
+
+`hcloud location list` {{ execute }}
+
+You should see:
+```
+ID   NAME   DESCRIPTION          NETWORK ZONE   COUNTRY   CITY
+1    fsn1   Falkenstein DC Park  eu-central     DE        Falkenstein
+...
+```
+
+**List available images (operating systems):**
+
+`hcloud image list` {{ execute }}
+
+You should see:
+```
+ID          TYPE     NAME           DESCRIPTION
+15512617    system   ubuntu-22.04   Ubuntu 22.04
+...
+```
+
+If all three commands worked, you're all set! ✅
+
+---
+
+## Lab 0: Configure CLI and Explore Options
+
+Time to practice what you've learned!
+
+### Objectives
+
+By the end of this lab, you will:
+- Have hcloud CLI installed and configured
+- Understand available server types
+- Know which data centers are available
+- Be comfortable running basic CLI commands
+
+### Part 1: CLI Setup (if not done already)
+
+Complete steps 0.4.1 through 0.4.4 above.
+
+**Checklist:**
+- ☐ hcloud installed
+- ☐ API token created
+- ☐ Context configured
+- ☐ Test commands working
+
+### Part 2: Explore Server Types
+
+Let's learn about the available server options.
+
+**List all server types:**
+
+`hcloud server-type list` {{ execute }}
+
+**Study the output:**
+- How many cores does cx11 have?
+- How much RAM does cx21 have?
+- What's the cheapest server type?
+- What's the most powerful?
+
+**Get details about a specific type:**
+
+`hcloud server-type describe cx11` {{ execute }}
+
+You'll see detailed information:
+- Cores
+- Memory
+- Disk size
+- Pricing per month and per hour
+- Storage type (local vs network)
+
+**Try these:**
+
+`hcloud server-type describe cx21` {{ execute }}
+
+`hcloud server-type describe ccx11` {{ execute }}
+
+`hcloud server-type describe cax11` {{ execute }}
+
+**Question:** What's the difference in monthly price between cx11 and ccx11?
+
+### Part 3: Explore Locations
+
+**List all available locations:**
+
+`hcloud location list` {{ execute }}
+
+**Questions:**
+- Which locations are in the USA?
+- What's the network zone for US locations?
+- Which US location is on the East Coast?
+
+**Get details about US locations:**
+
+`hcloud location describe ash` {{ execute }}
+
+This shows Ashburn, VA (East Coast).
+
+`hcloud location describe hil` {{ execute }}
+
+This shows Hillsboro, OR (West Coast).
+
+**For this course, we'll primarily use Ashburn (ash) since it's closer to most US users.**
+
+### Part 4: Explore Images (Operating Systems)
+
+**List available OS images:**
+
+`hcloud image list --type system` {{ execute }}
+
+**You'll see operating systems like:**
+- Ubuntu (various versions)
+- Debian
+- Fedora
+- Rocky Linux
+- CentOS (older)
+
+**Get details about Ubuntu 22.04:**
+
+`hcloud image list --type system | grep ubuntu-22.04` {{ execute }}
+
+### Part 5: Explore Hetzner CLI Help
+
+The hcloud CLI has built-in documentation!
+
+**Get general help:**
+
+`hcloud --help` {{ execute }}
+
+**Get help for a specific command:**
+
+`hcloud server --help` {{ execute }}
+
+`hcloud server create --help` {{ execute }}
+
+**Tip:** Add `--help` to any command to see what options are available!
+
+### Part 6: Practice Exercise
+
+**Task:** Find the answers to these questions using hcloud commands:
+
+1. What is the monthly cost of a cx31 server?
+2. How many vCPU cores does a ccx21 server have?
+3. In which city is the "hel1" location?
+4. What Ubuntu versions are available?
+5. How much RAM does a cax21 server have?
+
+**Hint:** Use these commands:
+- `hcloud server-type describe [TYPE]`
+- `hcloud location describe [LOCATION]`
+- `hcloud image list --type system`
+
+### Solutions
+
+**1. Monthly cost of cx31:**
+
+`hcloud server-type describe cx31` {{ execute }}
+
+Look for "Monthly gross" - should be around €10.90 (~$11.88)
+
+**2. vCPU cores in ccx21:**
+
+`hcloud server-type describe ccx21` {{ execute }}
+
+Look for "Cores" - should be 4
+
+**3. City for hel1:**
+
+`hcloud location describe hel1` {{ execute }}
+
+City: Helsinki
+
+**4. Ubuntu versions:**
+
+`hcloud image list --type system | grep ubuntu` {{ execute }}
+
+You'll see multiple versions (20.04, 22.04, etc.)
+
+**5. RAM in cax21:**
+
+`hcloud server-type describe cax21` {{ execute }}
+
+Memory: 8.0 GB
+
+---
+
+## Module 0 Summary
+
+Congratulations! You've completed Module 0! 🎉
+
+**What you learned:**
+✅ What Hetzner Cloud is and how it compares to other providers
+✅ Different server types (CX, CPX, CCX, CAX) and when to use them
+✅ How to create a Hetzner account and navigate the console
+✅ How to create and manage API tokens
+✅ How to install and use the Hetzner CLI (hcloud)
+✅ How to explore available resources using CLI commands
+
+**Key takeaways:**
+- **CX** = Shared CPU, most affordable, great for learning
+- **CPX** = Shared AMD CPU, better performance
+- **CCX** = Dedicated CPU, production workloads
+- **CAX** = Arm64, great efficiency and price
+- **API tokens** = Enable CLI and automation (keep them secret!)
+- **hcloud CLI** = Powerful tool for managing infrastructure
+
+**What's next:**
+In Module 1, you'll create your first server, learn to manage its lifecycle, and work with snapshots!
+
+---
+
+## Troubleshooting
+
+### "hcloud: command not found"
+
+**Problem:** CLI not in your PATH
+
+**Solutions:**
+
+**macOS/Linux:**
+Add to PATH:
+
+```bash{{ copy }}
+export PATH=$PATH:/usr/local/bin
+```
+
+Add to your `~/.bashrc` or `~/.zshrc` to make permanent.
+
+**Windows:**
+- Right-click "This PC" → Properties
+- Advanced system settings → Environment Variables
+- Edit PATH variable
+- Add the directory where hcloud.exe is located
+
+### "context: invalid token"
+
+**Problem:** API token not accepted
+
+**Solutions:**
+1. Verify token was copied correctly (no extra spaces)
+2. Check token permissions (should have Read & Write)
+3. Generate a new token if needed
+4. Delete context and recreate:
+
+```bash{{ execute }}
+hcloud context delete my-project
+```
+
+```bash{{ execute }}
+hcloud context create my-project
+```
+
+### Can't access Hetzner Console
+
+**Problem:** Can't log into https://console.hetzner.cloud
+
+**Solutions:**
+1. Check you're using correct email/password
+2. Try password reset
+3. Check email for verification link
+4. Try different browser
+5. Check Hetzner status page: https://status.hetzner.com
+
+---
+
+## Additional Resources
+
+**Official Documentation:**
+- [Hetzner Cloud Docs](https://docs.hetzner.com/cloud/)
+- [hcloud CLI Reference](https://github.com/hetznercloud/cli)
+- [Hetzner API Docs](https://docs.hetzner.cloud/)
+
+**Community:**
+- [Hetzner Community Forum](https://community.hetzner.com/)
+- [hcloud CLI GitHub](https://github.hetznercloud/cli)
+
+**Videos:**
+- [Hetzner Cloud Official Channel](https://www.youtube.com/c/HetznerOnline)
+
+---
+
+## Quiz
+
+Test your knowledge!
+
+**1. What does VPS stand for?**
+- [ ] Very Powerful Server
+- [ ] Virtual Private Server ✓
+- [ ] Virtual Public System
+- [ ] Variable Processing Speed
+
+**2. Which server type has dedicated CPU cores?**
+- [ ] CX
+- [ ] CPX
+- [ ] CCX ✓
+- [ ] CAX
+
+**3. What is an API token used for?**
+- [ ] Logging into the web console
+- [ ] Accessing servers via SSH
+- [ ] Programmatic access to Hetzner API ✓
+- [ ] Resetting your password
+
+**4. Which location is in the USA?**
+- [ ] fsn1
+- [ ] nbg1
+- [ ] hel1
+- [ ] ash ✓
+
+**5. What command lists all server types?**
+- [ ] hcloud list servers
+- [ ] hcloud server-type list ✓
+- [ ] hcloud types
+- [ ] hcloud show server-types
+
+---
+
+**Next Module:** [Module 1 - Deploying and Managing Servers](./module-01-servers.mdcl)
+
+**Back to:** [Course Overview](./README.md)

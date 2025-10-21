@@ -1,0 +1,1599 @@
+# Module 7: Regional Strategy & Performance Tuning
+
+**Time:** 2 hours
+**Difficulty:** Intermediate
+**Prerequisites:** Modules 0, 1, 2, 3, 4, 5, 6
+
+---
+
+## Module Overview
+
+Performance and location matter. In this module, you'll learn how to choose the right data center locations, select optimal hardware for your workload, benchmark server performance, and implement multi-region strategies for global applications.
+
+**What you'll learn:**
+- Hetzner data center locations and how to choose
+- Performance differences between Intel, AMD, and ARM processors
+- How to benchmark CPU, network, and disk performance
+- Latency optimization for global users
+- Multi-region deployment strategies
+- Data transfer and bandwidth considerations
+
+**What you'll build:**
+- Performance benchmarking workflow
+- Multi-region deployment
+- Latency comparison across locations
+- Load balancing strategy for global traffic
+
+**Why this matters:**
+- Location affects user experience (latency)
+- Wrong hardware choice costs money or performance
+- Multi-region provides reliability and speed
+- Benchmarking proves what actually performs best
+
+---
+
+## 7.1 — Data Center Locations and Regional Architecture
+
+### Hetzner Cloud Locations (October 2025)
+
+**Available data centers:**
+
+**United States:**
+- **Ashburn, VA (ash)** - US East Coast
+  - Network zone: `us-east`
+  - Launched: 2023
+  - Ideal for: East coast US, East coast Canada, Latin America
+
+- **Hillsboro, OR (hil)** - US West Coast
+  - Network zone: `us-west`
+  - Launched: 2024
+  - Ideal for: West coast US, West coast Canada, Pacific regions
+
+**Europe:**
+- **Falkenstein, Germany (fsn1)** - Hetzner's original data center
+  - Network zone: `eu-central`
+  - Launched: 1997 (Cloud: 2018)
+  - Ideal for: Central Europe, Western Europe
+
+- **Nuremberg, Germany (nbg1)** - Secondary German location
+  - Network zone: `eu-central`
+  - Launched: 2019
+  - Ideal for: Central Europe, Eastern Europe
+
+- **Helsinki, Finland (hel1)** - Nordic location
+  - Network zone: `eu-central`
+  - Launched: 2020
+  - Ideal for: Nordics, Eastern Europe, Russia
+
+**Asia-Pacific:**
+- **Singapore (sin)** - Asia hub (if available)
+  - Network zone: `ap-southeast`
+  - Ideal for: Southeast Asia, Australia, India
+
+**Note:** Availability varies. Check current locations:
+
+```bash{{ execute }}
+hcloud location list
+```
+
+### Understanding Network Zones
+
+**Network zones** are regional groupings of data centers.
+
+**Why they matter:**
+- Resources in same network zone can use private networks
+- Data transfer within network zone is free/faster
+- Different network zones = separate private networks required
+
+**Example:**
+
+```
+us-east network zone:
+  └─ Ashburn (ash)
+
+us-west network zone:
+  └─ Hillsboro (hil)
+
+eu-central network zone:
+  ├─ Falkenstein (fsn1)
+  ├─ Nuremberg (nbg1)
+  └─ Helsinki (hel1)
+```
+
+**Private network rules:**
+- Can span multiple locations in same network zone
+- Example: One private network can include servers in fsn1, nbg1, and hel1
+- Cannot span different network zones
+- Example: Cannot have one private network with servers in ash and hil
+
+### How to Choose a Location
+
+**Decision factors:**
+
+#### 1. User Location (Most Important)
+
+**Principle:** Deploy close to your users.
+
+**Latency by distance (approximate):**
+- Same city: 1-10 ms
+- Same region (500 miles): 10-30 ms
+- Cross-country (3000 miles): 60-80 ms
+- Transatlantic (US-Europe): 80-120 ms
+- Transpacific (US-Asia): 150-250 ms
+
+**Example scenarios:**
+
+**Scenario A: US-only SaaS application**
+- Users: 70% East Coast, 30% West Coast
+- **Best choice:** Ashburn (ash)
+- Why: Majority of users get best latency
+
+**Scenario B: European e-commerce**
+- Users: Primarily Germany, France, UK
+- **Best choice:** Falkenstein (fsn1) or Nuremberg (nbg1)
+- Why: Central Europe location serves all well
+
+**Scenario C: Global application**
+- Users: Worldwide
+- **Best choice:** Multi-region (ash + fsn1 + sin)
+- Why: Each region serves local users with low latency
+
+#### 2. Data Residency and Compliance
+
+**GDPR (EU users):**
+- EU user data should stay in EU
+- Use fsn1, nbg1, or hel1 for GDPR compliance
+
+**US regulations:**
+- Some industries require US data to stay in US
+- Use ash or hil
+
+**Data sovereignty:**
+- Some countries require data to stay within borders
+- Research specific requirements for your industry
+
+#### 3. Redundancy and High Availability
+
+**Single location risk:**
+- Data center outage = entire application down
+- Network issues affect all users
+
+**Multi-location strategy:**
+- Deploy in two locations minimum
+- If one fails, traffic routes to other
+- Better resilience
+
+**Example:**
+- Primary: Ashburn (ash)
+- Secondary: Hillsboro (hil)
+- If Ashburn has issues, Hillsboro takes over
+
+#### 4. Cost Considerations
+
+**Server pricing varies slightly by location** (usually within 5-10%).
+
+**Check pricing:**
+
+```bash{{ execute }}
+hcloud server-type list
+```
+
+Look at prices for different locations.
+
+**Data transfer pricing:**
+- First 20 TB/month included per server
+- Additional traffic: ~$1-1.50 per TB
+- Traffic between Hetzner locations in same network zone: FREE
+
+**Example cost optimization:**
+- Heavy data transfer between servers
+- Keep all servers in same network zone
+- Save on bandwidth costs
+
+#### 5. Available Resources
+
+**Not all server types available in all locations.**
+
+**Check availability:**
+
+```bash{{ execute }}
+hcloud server-type describe cpx11
+```
+
+Look at "available" status for each location.
+
+**Generally:**
+- All locations: CPX, CCX, CAX series
+- Newest/largest types: May launch in fsn1/nbg1 first, expand later
+
+### Latency Testing
+
+**Test latency to each location before deploying:**
+
+**Create test servers:**
+
+```bash{{ execute }}
+# Ashburn
+hcloud server create --name latency-test-ash --type cpx11 --image ubuntu-24.04 --location ash
+
+# Hillsboro
+hcloud server create --name latency-test-hil --type cpx11 --image ubuntu-24.04 --location hil
+
+# Falkenstein (if testing EU)
+hcloud server create --name latency-test-fsn --type cpx11 --image ubuntu-24.04 --location fsn1
+```
+
+**Get IPs:**
+
+```bash{{ execute }}
+hcloud server list
+```
+
+**Test latency from your location:**
+
+```bash{{ copy }}
+# Ping each server
+ping -c 10 ash-server-ip
+ping -c 10 hil-server-ip
+ping -c 10 fsn-server-ip
+```
+
+**Example output:**
+
+```
+ash: avg 25 ms
+hil: avg 75 ms
+fsn: avg 110 ms
+```
+
+**Interpretation:** If you're on US East Coast, Ashburn has lowest latency.
+
+**Test from different locations:**
+
+Use online tools:
+- https://www.cloudping.info/ (check various cloud providers)
+- https://www.dotcom-tools.com/ping-test (test from multiple global locations)
+
+**Delete test servers:**
+
+```bash{{ execute }}
+hcloud server delete latency-test-ash latency-test-hil latency-test-fsn
+```
+
+---
+
+## 7.2 — Choosing CPU Architecture: Intel vs AMD vs ARM
+
+### CPU Architecture Overview
+
+Hetzner offers three CPU architectures:
+
+**AMD (CPX and CCX series):**
+- AMD EPYC processors
+- Current generation: EPYC-Genoa (CPX), EPYC Milan/Rome (CCX)
+- x86_64 architecture
+- Best all-around performance
+
+**Intel (Legacy CX series, not in US):**
+- Intel Xeon processors
+- x86_64 architecture
+- Wide compatibility
+- Note: CX series being phased out, replaced by CPX
+
+**ARM (CAX series):**
+- Ampere Altra processors
+- ARM64 architecture
+- Energy efficient
+- Excellent price/performance ratio
+- Requires ARM-compatible software
+
+### Performance Characteristics
+
+#### AMD EPYC (CPX/CCX)
+
+**Strengths:**
+- Excellent multi-threaded performance
+- High core counts
+- Good memory bandwidth
+- Strong single-thread performance
+- Wide software compatibility
+
+**Ideal for:**
+- General purpose applications
+- Databases (PostgreSQL, MySQL, Redis)
+- Web servers
+- Container workloads
+- Machine learning inference
+
+**CPX (Shared CPU):**
+- 2-16 vCPUs
+- Cost-effective for most workloads
+- CPU time shared with other users (fair scheduling)
+- 30%+ performance boost with EPYC-Genoa (Oct 2025)
+
+**CCX (Dedicated CPU):**
+- 2-48 vCPUs (dedicated)
+- No sharing, consistent performance
+- 2x-3x price of CPX
+- For CPU-intensive workloads
+
+**Pricing (US regions):**
+- CPX11 (2 vCPU, 2GB RAM): ~$5-6/month
+- CCX13 (2 dedicated vCPU, 8GB RAM): ~$52-57/month
+
+#### ARM (CAX)
+
+**Strengths:**
+- Exceptional price/performance
+- Energy efficient (lower power = less heat)
+- More CPU/RAM per dollar
+- Native ARM performance
+
+**Limitations:**
+- Software must support ARM64
+- Some proprietary software x86-only
+- Docker images may not have ARM variants
+- Slightly less mature ecosystem
+
+**Ideal for:**
+- Modern web applications (Node.js, Python, Go, Rust)
+- Containers with ARM images
+- Static site generators
+- API servers
+- Microservices
+
+**CAX pricing (better value):**
+- CAX11 (2 vCPU, 4GB RAM): ~$4-5/month
+- CAX21 (4 vCPU, 8GB RAM): ~$8-9/month
+
+**Comparison:**
+- CPX21 (3 vCPU, 4GB): ~$10.50/month
+- CAX21 (4 vCPU, 8GB): ~$8.50/month
+- CAX21 has MORE cores and RAM for LESS money!
+
+### Software Compatibility
+
+#### ARM Compatibility Checklist
+
+**Languages (native support):**
+- ✅ Python
+- ✅ Node.js
+- ✅ Go
+- ✅ Rust
+- ✅ Java
+- ✅ Ruby
+- ✅ PHP
+
+**Databases:**
+- ✅ PostgreSQL (official ARM builds)
+- ✅ MySQL/MariaDB (official ARM builds)
+- ✅ Redis (official ARM builds)
+- ✅ MongoDB (official ARM builds)
+- ⚠️ Some enterprise databases: check vendor
+
+**Web Servers:**
+- ✅ Nginx (native ARM)
+- ✅ Apache (native ARM)
+- ✅ Caddy (native ARM)
+
+**Docker:**
+- ✅ Docker runs on ARM
+- ⚠️ Need ARM-compatible images
+- ✅ Most official images have ARM variants
+
+**Checking Docker image ARM support:**
+
+```bash{{ execute }}
+# Search Docker Hub for ARM images
+docker manifest inspect nginx:latest | grep architecture
+```
+
+**Output:**
+
+```json
+"architecture": "amd64"
+"architecture": "arm64"
+```
+
+If `arm64` is listed, it works on CAX!
+
+**Common images with ARM support:**
+- nginx
+- alpine
+- ubuntu
+- node
+- python
+- postgres
+- redis
+- mysql
+
+**What doesn't work on ARM:**
+- x86-only proprietary software
+- Some legacy applications
+- Certain game servers
+- Software without ARM builds
+
+**Testing ARM compatibility:**
+
+Create a CAX server and test your application:
+
+```bash{{ copy }}
+hcloud server create --name arm-test --type cax11 --image ubuntu-24.04 --location ash
+
+# SSH and test
+ssh root@server-ip
+docker run --platform linux/arm64 nginx:latest
+```
+
+If it works on CAX, you can use cheaper ARM servers!
+
+### Performance Comparison (Relative)
+
+**Benchmark results (approximate, varies by workload):**
+
+**Single-threaded performance (higher = better):**
+- AMD EPYC-Genoa (CPX): 100% (baseline)
+- AMD EPYC Milan (CCX): 95%
+- ARM Ampere Altra (CAX): 85-90%
+
+**Multi-threaded performance (per dollar):**
+- CAX: Best (most cores per dollar)
+- CPX: Good
+- CCX: Lower (but dedicated, consistent)
+
+**Memory bandwidth:**
+- CCX: Highest
+- CPX: High
+- CAX: Good
+
+**Energy efficiency:**
+- CAX: Best (ARM architecture)
+- CPX/CCX: Good
+
+**Decision matrix:**
+
+| Use Case | Best Choice | Why |
+|----------|-------------|-----|
+| General web app | CPX or CAX | Cost-effective, plenty of power |
+| ARM-compatible app | CAX | Best value |
+| CPU-intensive (encoding, rendering) | CCX | Dedicated CPU, no sharing |
+| Database (large) | CCX or CPX21+ | Memory bandwidth matters |
+| Database (small-medium) | CAX or CPX | Great value |
+| Legacy x86-only software | CPX or CCX | ARM won't work |
+| Burstable workload | CPX | Shared CPU handles bursts well |
+| Consistent high CPU | CCX | Dedicated = predictable |
+
+---
+
+## 7.3 — Benchmarking Performance
+
+### Why Benchmark?
+
+**Benchmarking** measures actual performance to:
+- Compare different server types
+- Validate performance claims
+- Identify bottlenecks
+- Make informed decisions
+- Prove ROI for upgrades
+
+**What to benchmark:**
+- CPU performance
+- Memory speed
+- Disk I/O (read/write)
+- Network throughput
+- Application-specific metrics
+
+### CPU Benchmarking
+
+#### sysbench - CPU Test
+
+**Install sysbench:**
+
+```bash{{ execute }}
+sudo apt update
+sudo apt install sysbench -y
+```
+
+**CPU benchmark (single-thread):**
+
+```bash{{ execute }}
+sysbench cpu --threads=1 --time=30 run
+```
+
+**Output:**
+
+```
+CPU speed:
+    events per second: 1234.56
+
+Throughput:
+    events/s: 1234.56
+    total time: 30.0012s
+```
+
+**Higher events/second = better CPU performance.**
+
+**CPU benchmark (multi-thread):**
+
+```bash{{ execute }}
+# Use all cores
+sysbench cpu --threads=$(nproc) --time=30 run
+```
+
+**Example results:**
+
+```
+CPX11 (2 cores): 2400 events/s
+CPX21 (3 cores): 3600 events/s
+CAX21 (4 cores): 3800 events/s
+CCX13 (2 dedicated): 2600 events/s
+```
+
+**Interpretation:**
+- CAX21 has best multi-thread performance (4 cores)
+- CCX13 has better single-thread than CPX11 (dedicated)
+
+#### Geekbench (Comprehensive)
+
+**Geekbench** provides industry-standard benchmarks.
+
+**Install:**
+
+```bash{{ execute }}
+wget https://cdn.geekbench.com/Geekbench-6.2.2-Linux.tar.gz
+tar xzf Geekbench-6.2.2-Linux.tar.gz
+cd Geekbench-6.2.2-Linux
+```
+
+**Run benchmark:**
+
+```bash{{ execute }}
+./geekbench6
+```
+
+**Takes 5-10 minutes, outputs detailed results:**
+
+```
+Single-Core Score: 1450
+Multi-Core Score: 4200
+```
+
+**Compare at:** https://browser.geekbench.com/
+
+### Memory Benchmarking
+
+**sysbench memory test:**
+
+```bash{{ execute }}
+sysbench memory --threads=$(nproc) --time=30 run
+```
+
+**Output:**
+
+```
+Total operations: 5678901 (189296.33 per second)
+Total bytes: 55.50 GiB (1.85 GiB/sec)
+```
+
+**Measures memory throughput (GiB/sec).**
+
+**Higher = better memory bandwidth.**
+
+**Example results:**
+- CPX11: 1.5-2 GiB/sec
+- CPX21: 2-3 GiB/sec
+- CCX13: 4-6 GiB/sec (dedicated = better)
+- CAX21: 2-3 GiB/sec
+
+### Disk I/O Benchmarking
+
+#### fio - Flexible I/O Tester
+
+**Install:**
+
+```bash{{ execute }}
+sudo apt install fio -y
+```
+
+**Sequential read test:**
+
+```bash{{ execute }}
+fio --name=seqread --rw=read --bs=1M --size=1G --numjobs=1 --time_based --runtime=30 --group_reporting
+```
+
+**Output:**
+
+```
+read: IOPS=1234, BW=1234MiB/s
+```
+
+**Sequential write test:**
+
+```bash{{ execute }}
+fio --name=seqwrite --rw=write --bs=1M --size=1G --numjobs=1 --time_based --runtime=30 --group_reporting
+```
+
+**Random read test (important for databases):**
+
+```bash{{ execute }}
+fio --name=randread --rw=randread --bs=4k --size=1G --numjobs=4 --time_based --runtime=30 --group_reporting
+```
+
+**Random write test:**
+
+```bash{{ execute }}
+fio --name=randwrite --rw=randwrite --bs=4k --size=1G --numjobs=4 --time_based --runtime=30 --group_reporting
+```
+
+**Typical Hetzner Cloud SSD performance:**
+- Sequential read: 800-1200 MB/s
+- Sequential write: 600-1000 MB/s
+- Random read (4k): 50k-100k IOPS
+- Random write (4k): 30k-80k IOPS
+
+**Performance is similar across server types** (shared SSD storage).
+
+**Volumes performance:**
+- Slightly lower than root disk
+- Network-attached, so adds latency
+- Still very fast for most use cases
+
+### Network Benchmarking
+
+#### iperf3 - Network Throughput
+
+**Install on two servers:**
+
+```bash{{ execute }}
+sudo apt install iperf3 -y
+```
+
+**On server 1 (receiver):**
+
+```bash{{ execute }}
+iperf3 -s
+```
+
+**On server 2 (sender):**
+
+```bash{{ copy }}
+iperf3 -c server1-ip -t 30
+```
+
+**Output:**
+
+```
+[  5]   0.00-30.00  sec  35.0 GBytes  10.0 Gbits/sec
+```
+
+**Hetzner Cloud network performance:**
+- CPX11-CPX31: 20 Gbps
+- CPX41+: 20-40 Gbps
+- CCX series: 20-40 Gbps
+- CAX series: 20 Gbps
+
+**Within same data center:** Near line-rate (very fast).
+
+**Between data centers (same network zone):** Excellent, free transfer.
+
+**Between data centers (different network zones):** Good, but counts toward 20 TB limit.
+
+#### Latency Testing
+
+**ping for latency:**
+
+```bash{{ copy }}
+ping -c 100 server-ip
+```
+
+**Average latency:**
+
+```
+rtt min/avg/max/mdev = 0.234/0.567/1.234/0.123 ms
+```
+
+**Good latency targets:**
+- Same data center: < 1 ms
+- Same network zone: < 10 ms
+- Cross-country: 60-80 ms
+- International: 100-250 ms
+
+### Application-Specific Benchmarks
+
+**For real-world performance, benchmark your actual application.**
+
+#### Web Server (nginx)
+
+**Install Apache Bench:**
+
+```bash{{ execute }}
+sudo apt install apache2-utils -y
+```
+
+**Benchmark nginx:**
+
+```bash{{ execute }}
+# 10,000 requests, 100 concurrent
+ab -n 10000 -c 100 http://localhost/
+```
+
+**Output:**
+
+```
+Requests per second: 5000 [#/sec] (mean)
+Time per request: 20 ms (mean)
+```
+
+**Compare different server types to see real-world difference.**
+
+#### Database (PostgreSQL)
+
+**Install pgbench:**
+
+```bash{{ execute }}
+sudo apt install postgresql-client -y
+```
+
+**Initialize test database:**
+
+```bash{{ execute }}
+pgbench -i -s 50 mydatabase
+```
+
+**Run benchmark:**
+
+```bash{{ execute }}
+pgbench -c 10 -j 2 -t 1000 mydatabase
+```
+
+**Output:**
+
+```
+tps = 1234.567890 (including connections establishing)
+```
+
+**TPS (transactions per second) measures database performance.**
+
+---
+
+## 7.4 — Multi-Region Strategies
+
+### Why Multi-Region?
+
+**Benefits:**
+
+**1. Low latency for global users:**
+- US users → US server (25 ms)
+- EU users → EU server (25 ms)
+- vs. US users → EU server (110 ms)
+
+**2. High availability:**
+- If one region fails, others continue
+- Disaster recovery
+- Reduces single point of failure
+
+**3. Data residency compliance:**
+- EU data stays in EU
+- US data stays in US
+- Meets regulations
+
+**Challenges:**
+
+**1. Data synchronization:**
+- How to keep databases in sync
+- Eventual consistency
+- Conflict resolution
+
+**2. Increased complexity:**
+- More servers to manage
+- More monitoring
+- More cost
+
+**3. Traffic routing:**
+- How to send users to correct region
+- DNS-based routing
+- Geographic load balancing
+
+### Multi-Region Architecture Patterns
+
+#### Pattern 1: Active-Passive (Simple)
+
+**Setup:**
+- **Primary region:** Ashburn (active)
+- **Secondary region:** Hillsboro (passive, standby)
+
+**How it works:**
+- All traffic goes to Ashburn
+- Hillsboro is backup only
+- If Ashburn fails, manually switch to Hillsboro
+
+**Pros:**
+- Simple to implement
+- Lower cost (can use smaller backup server)
+- No data sync complexity
+
+**Cons:**
+- Manual failover (downtime during switch)
+- Backup region unused (wasted resources)
+- All users get Ashburn latency
+
+**Implementation:**
+
+```bash{{ copy }}
+# Primary: Ashburn
+hcloud server create --name web-primary --type cpx21 --image ubuntu-24.04 --location ash
+
+# Backup: Hillsboro
+hcloud server create --name web-backup --type cpx11 --image ubuntu-24.04 --location hil
+
+# Create floating IP in Ashburn
+hcloud floating-ip create --type ipv4 --home-location ash --name primary-ip
+
+# Assign to primary
+hcloud floating-ip assign primary-ip web-primary
+```
+
+**Failover process:**
+1. Primary fails
+2. Manually reassign floating IP to backup (different region requires new floating IP)
+3. Update DNS to point to backup IP
+4. DNS propagates (5-60 minutes)
+
+**Better approach: Use DNS failover service** (e.g., Cloudflare, Route53)
+
+#### Pattern 2: Active-Active (Geographic)
+
+**Setup:**
+- **US region:** Ashburn
+- **EU region:** Falkenstein
+- Traffic routed by user location
+
+**How it works:**
+- US users → Ashburn
+- EU users → Falkenstein
+- Geographic DNS routing
+
+**Pros:**
+- Low latency for all users
+- Both regions actively serving
+- Automatic failover (if DNS service supports)
+
+**Cons:**
+- Need to sync data between regions
+- More complex
+- Higher cost
+
+**Implementation:**
+
+**1. Deploy in both regions:**
+
+```bash{{ execute }}
+# US
+hcloud server create --name web-us --type cpx21 --image ubuntu-24.04 --location ash --user-data-from-file setup.yaml
+
+# EU
+hcloud server create --name web-eu --type cpx21 --image ubuntu-24.04 --location fsn1 --user-data-from-file setup.yaml
+```
+
+**2. Set up geographic DNS routing:**
+
+Use a DNS service that supports geo-routing:
+
+**Cloudflare (free tier):**
+- Add your domain
+- Create A record for `web-us` → Ashburn IP
+- Create A record for `web-eu` → Falkenstein IP
+- Enable Load Balancing with geographic routing
+
+**Route53 (AWS):**
+- Create hosted zone
+- Geolocation routing policy
+- US → Ashburn
+- EU → Falkenstein
+
+**3. Database replication:**
+
+**For read-heavy apps (most common):**
+
+**Primary-Replica setup:**
+- Primary database: Ashburn (writes)
+- Replica database: Falkenstein (reads)
+
+**PostgreSQL replication:**
+
+```bash{{ execute }}
+# On primary (Ashburn)
+# Configure for replication
+sudo -u postgres psql
+ALTER SYSTEM SET wal_level = 'replica';
+ALTER SYSTEM SET max_wal_senders = 3;
+
+# Create replication user
+CREATE ROLE replicator WITH REPLICATION PASSWORD 'password' LOGIN;
+
+# Restart PostgreSQL
+sudo systemctl restart postgresql
+```
+
+```bash{{ copy }}
+# On replica (Falkenstein)
+# Set up streaming replication
+sudo -u postgres pg_basebackup -h ash-primary-ip -U replicator -D /var/lib/postgresql/14/main -Xs -P
+
+# Configure recovery
+echo "primary_conninfo = 'host=ash-primary-ip user=replicator password=password'" > /var/lib/postgresql/14/main/postgresql.auto.conf
+
+# Start replica
+sudo systemctl start postgresql
+```
+
+**Now:**
+- US app → writes to Ashburn, reads from Ashburn
+- EU app → writes to Ashburn (higher latency), reads from Falkenstein (low latency)
+
+**For write-heavy apps:**
+- Multi-primary replication (complex)
+- Use distributed database (CockroachDB, Cassandra)
+- Or accept write latency to primary region
+
+#### Pattern 3: Edge Caching (CDN)
+
+**Setup:**
+- **Origin server:** One region (e.g., Ashburn)
+- **CDN:** Cloudflare, Fastly, or similar
+- Static content cached globally
+
+**How it works:**
+- User requests page
+- CDN serves cached content from nearest edge
+- Dynamic content fetched from origin
+
+**Pros:**
+- Simple (no multi-region servers)
+- Very low latency for static content
+- Cost-effective
+
+**Cons:**
+- Only helps with static content
+- Dynamic content still has origin latency
+
+**Implementation with Cloudflare:**
+
+1. Deploy server in one region
+2. Add site to Cloudflare (free tier)
+3. Point DNS to Cloudflare
+4. Enable caching rules
+
+**Result:**
+- HTML, CSS, JS, images cached globally
+- Users get fast load times
+- Origin server serves dynamic API requests only
+
+### Data Synchronization Strategies
+
+**For stateless applications (no database):**
+- Easy! Each region independent
+- Deploy same code everywhere
+
+**For stateful applications:**
+
+**Option 1: Primary-Replica (read replicas):**
+- One primary database (writes)
+- Multiple replicas (reads)
+- Application directs writes to primary, reads to local replica
+
+**Option 2: Multi-Primary (bidirectional sync):**
+- Multiple databases accept writes
+- Sync between them
+- Conflict resolution needed
+- Complex but powerful
+
+**Option 3: Distributed Database:**
+- Use database designed for multi-region (CockroachDB, Cassandra, DynamoDB)
+- Handles replication automatically
+- May be overkill for simple apps
+
+**Option 4: Object Storage Sync:**
+- Store files in object storage (S3, Backblaze B2)
+- Replicate across regions
+- Applications access local region
+
+**For this course:** Primary-Replica is most practical starting point.
+
+### Traffic Routing Methods
+
+**DNS-based routing:**
+- Use GeoDNS to route by location
+- Services: Cloudflare, Route53, NS1
+- TTL affects failover speed
+
+**Anycast:**
+- Same IP announced from multiple locations
+- Network routes to nearest
+- Advanced, usually CDN/DDoS providers
+
+**Load balancer with health checks:**
+- Hetzner Load Balancer (single region)
+- Cloudflare Load Balancing (global)
+- Route traffic only to healthy servers
+
+---
+
+## Lab 7: Performance Comparison Across Regions and Types
+
+**Time:** 60-90 minutes
+**Cost:** ~$0.20-0.30 (if deleted within 1 hour)
+
+### Lab Objectives
+
+1. Deploy servers in two different regions
+2. Deploy servers with different CPU types (CPX vs CAX)
+3. Benchmark CPU, disk, and network performance
+4. Measure latency from your location
+5. Compare price/performance ratios
+6. Make informed decision based on real data
+
+### Step 1: Deploy Test Servers
+
+**Create 4 servers for comparison:**
+
+```bash{{ copy }}
+# CPX11 in Ashburn
+hcloud server create \
+  --name bench-cpx-ash \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+
+# CPX11 in Hillsboro
+hcloud server create \
+  --name bench-cpx-hil \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location hil \
+  --ssh-key my-laptop
+
+# CAX11 in Ashburn
+hcloud server create \
+  --name bench-cax-ash \
+  --type cax11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+
+# CPX21 in Ashburn (for size comparison)
+hcloud server create \
+  --name bench-cpx21-ash \
+  --type cpx21 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+```
+
+**Wait for all servers to finish creating (~30-60 seconds).**
+
+**Get all IPs:**
+
+```bash{{ execute }}
+hcloud server list | grep bench-
+```
+
+**Note down all IPs in a text file for easy reference.**
+
+### Step 2: Install Benchmark Tools on All Servers
+
+**Create installation script:**
+
+```bash{{ execute }}
+nano install-bench-tools.sh
+```
+
+**Paste:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+echo "Installing benchmark tools..."
+
+sudo apt update -qq
+sudo apt install -y sysbench fio iperf3 curl apache2-utils
+
+echo "Installation complete!"
+echo "Installed: sysbench, fio, iperf3, apache2-utils"
+```
+
+**Save and exit.**
+
+**Make executable:**
+
+```bash{{ execute }}
+chmod +x install-bench-tools.sh
+```
+
+**Copy to all servers and run:**
+
+```bash{{ execute }}
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo "Setting up $server ($IP)..."
+  scp install-bench-tools.sh root@$IP:/root/
+  ssh root@$IP 'bash /root/install-bench-tools.sh'
+done
+```
+
+**This will take 2-3 minutes.**
+
+### Step 3: CPU Benchmarking
+
+**Create CPU benchmark script:**
+
+```bash{{ execute }}
+nano cpu-bench.sh
+```
+
+**Paste:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+echo "=== CPU Benchmark ==="
+echo "Server: $(hostname)"
+echo "CPU: $(lscpu | grep 'Model name' | sed 's/Model name: *//')"
+echo "Cores: $(nproc)"
+echo ""
+
+echo "Single-thread test (30 seconds)..."
+sysbench cpu --threads=1 --time=30 run | grep "events per second"
+
+echo ""
+echo "Multi-thread test (30 seconds)..."
+sysbench cpu --threads=$(nproc) --time=30 run | grep "events per second"
+```
+
+**Run on all servers:**
+
+```bash{{ execute }}
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo "========================================="
+  echo "Benchmarking $server"
+  echo "========================================="
+  scp cpu-bench.sh root@$IP:/root/
+  ssh root@$IP 'bash /root/cpu-bench.sh'
+  echo ""
+done
+```
+
+**Record results in table:**
+
+```
+| Server          | Type  | Location  | Single-thread | Multi-thread |
+|-----------------|-------|-----------|---------------|--------------|
+| bench-cpx-ash   | CPX11 | Ashburn   | 1234 evt/s    | 2456 evt/s   |
+| bench-cpx-hil   | CPX11 | Hillsboro | 1230 evt/s    | 2450 evt/s   |
+| bench-cax-ash   | CAX11 | Ashburn   | 1100 evt/s    | 2200 evt/s   |
+| bench-cpx21-ash | CPX21 | Ashburn   | 1240 evt/s    | 3680 evt/s   |
+```
+
+**Analysis:**
+- CPX11 Ashburn vs Hillsboro: Similar performance (expected)
+- CAX11: Slightly lower single-thread, but close
+- CPX21: Better multi-thread (3 cores vs 2)
+
+### Step 4: Disk I/O Benchmarking
+
+**Create disk benchmark script:**
+
+```bash{{ execute }}
+nano disk-bench.sh
+```
+
+**Paste:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+echo "=== Disk I/O Benchmark ==="
+echo "Server: $(hostname)"
+echo ""
+
+echo "Sequential write test..."
+fio --name=seqwrite --rw=write --bs=1M --size=1G --numjobs=1 --time_based --runtime=10 --group_reporting | grep "WRITE:"
+
+echo ""
+echo "Sequential read test..."
+fio --name=seqread --rw=read --bs=1M --size=1G --numjobs=1 --time_based --runtime=10 --group_reporting | grep "READ:"
+
+echo ""
+echo "Random read test (4k blocks)..."
+fio --name=randread --rw=randread --bs=4k --size=500M --numjobs=4 --time_based --runtime=10 --group_reporting | grep "READ:"
+```
+
+**Run on all servers:**
+
+```bash{{ execute }}
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo "========================================="
+  echo "Disk benchmark: $server"
+  echo "========================================="
+  scp disk-bench.sh root@$IP:/root/
+  ssh root@$IP 'bash /root/disk-bench.sh'
+  echo ""
+done
+```
+
+**Results will show disk performance is similar across all** (same SSD backend).
+
+### Step 5: Network Latency Testing
+
+**From your local machine, test latency to each:**
+
+```bash{{ execute }}
+echo "=== Latency from your location ==="
+
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo -n "$server ($IP): "
+  ping -c 10 -q $IP | grep "avg" | awk -F'/' '{print $5 " ms"}'
+done
+```
+
+**Example results (from New York):**
+
+```
+bench-cpx-ash (Ashburn): 12.5 ms
+bench-cpx-hil (Hillsboro): 78.3 ms
+bench-cax-ash (Ashburn): 12.7 ms
+bench-cpx21-ash (Ashburn): 12.4 ms
+```
+
+**Analysis:**
+- Ashburn much faster for East Coast (expected)
+- Server type doesn't affect latency
+- Location is dominant factor for latency
+
+### Step 6: Inter-Server Network Performance
+
+**Test network speed between regions:**
+
+**On bench-cpx-ash (Ashburn), start iperf3 server:**
+
+```bash{{ copy }}
+ssh root@bench-cpx-ash-ip
+iperf3 -s
+```
+
+**Keep this running.**
+
+**In new terminal, test from Hillsboro to Ashburn:**
+
+```bash{{ copy }}
+ssh root@bench-cpx-hil-ip
+iperf3 -c bench-cpx-ash-ip -t 20
+```
+
+**Results:**
+
+```
+[  5]   0.00-20.00  sec  2.5 GBytes  1.1 Gbits/sec
+```
+
+**Shows cross-country bandwidth (~1 Gbps is good).**
+
+**Test within same data center:**
+
+```bash{{ copy }}
+ssh root@bench-cax-ash-ip
+iperf3 -c bench-cpx-ash-ip -t 20
+```
+
+**Results:**
+
+```
+[  5]   0.00-20.00  sec  23.0 GBytes  9.8 Gbits/sec
+```
+
+**Much faster within same data center!**
+
+### Step 7: Price/Performance Analysis
+
+**Calculate performance per dollar:**
+
+**Monthly costs:**
+- CPX11: $5.50/month
+- CAX11: $4.50/month
+- CPX21: $10.50/month
+
+**CPU performance (multi-thread events/sec from Step 3):**
+- CPX11: 2450 evt/s → 2450 / $5.50 = **445 evt/s per dollar**
+- CAX11: 2200 evt/s → 2200 / $4.50 = **489 evt/s per dollar**
+- CPX21: 3680 evt/s → 3680 / $10.50 = **350 evt/s per dollar**
+
+**Analysis:**
+- **CAX11 has best price/performance** (489 vs 445)
+- CPX21 costs more per performance unit but gives more total performance
+- For ARM-compatible workloads, CAX is best value
+
+**Consider your needs:**
+- Budget-conscious, ARM-compatible? → **CAX11**
+- Need more total power? → **CPX21**
+- Need x86 compatibility? → **CPX11**
+- Need dedicated CPU? → **CCX series**
+
+### Step 8: Real-World Application Test
+
+**Install nginx on all servers:**
+
+```bash{{ execute }}
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo "Installing nginx on $server..."
+  ssh root@$IP 'apt install -y nginx && systemctl start nginx'
+done
+```
+
+**Benchmark nginx with Apache Bench:**
+
+```bash{{ execute }}
+for server in bench-cpx-ash bench-cpx-hil bench-cax-ash bench-cpx21-ash; do
+  IP=$(hcloud server describe $server | grep "Public IPv4:" | awk '{print $3}')
+  echo "========================================="
+  echo "HTTP benchmark: $server"
+  echo "========================================="
+  ab -n 10000 -c 100 http://$IP/ | grep "Requests per second"
+  echo ""
+done
+```
+
+**Example results:**
+
+```
+bench-cpx-ash: 5200 requests/sec
+bench-cpx-hil: 5180 requests/sec
+bench-cax-ash: 5350 requests/sec
+bench-cpx21-ash: 7800 requests/sec
+```
+
+**Analysis:**
+- CAX performs slightly better for web serving
+- CPX21 significantly better (more cores)
+- Location doesn't affect max requests/sec (but affects latency to clients)
+
+### Step 9: Document Findings
+
+**Create summary document:**
+
+```bash{{ execute }}
+nano benchmark-results.md
+```
+
+**Fill in your actual results:**
+
+```markdown
+# Performance Benchmark Results
+
+Date: October 20, 2025
+Test Duration: 1 hour
+
+## Servers Tested
+
+1. bench-cpx-ash: CPX11, Ashburn, $5.50/month
+2. bench-cpx-hil: CPX11, Hillsboro, $5.50/month
+3. bench-cax-ash: CAX11, Ashburn, $4.50/month
+4. bench-cpx21-ash: CPX21, Ashburn, $10.50/month
+
+## CPU Performance
+
+| Server | Single-thread | Multi-thread | Price/Perf |
+|--------|---------------|--------------|------------|
+| CPX11-ash | 1234 evt/s | 2450 evt/s | 445 |
+| CPX11-hil | 1230 evt/s | 2450 evt/s | 445 |
+| CAX11-ash | 1100 evt/s | 2200 evt/s | 489 |
+| CPX21-ash | 1240 evt/s | 3680 evt/s | 350 |
+
+## Latency (from my location: East Coast US)
+
+| Server | Avg Latency |
+|--------|-------------|
+| CPX11-ash | 12 ms |
+| CPX11-hil | 78 ms |
+| CAX11-ash | 13 ms |
+| CPX21-ash | 12 ms |
+
+## Conclusions
+
+1. **Best value**: CAX11 (highest performance per dollar)
+2. **Best latency**: Ashburn (for my location)
+3. **Best total performance**: CPX21
+4. **Recommendation**: CAX11 in Ashburn for my use case
+```
+
+**Save this for future reference.**
+
+### Step 10: Cleanup
+
+**Delete all benchmark servers:**
+
+```bash{{ execute }}
+hcloud server delete bench-cpx-ash
+hcloud server delete bench-cpx-hil
+hcloud server delete bench-cax-ash
+hcloud server delete bench-cpx21-ash
+```
+
+**Verify:**
+
+```bash{{ execute }}
+hcloud server list
+```
+
+Should show no benchmark servers.
+
+---
+
+## Lab 7 Summary
+
+**What you accomplished:**
+
+✅ Deployed servers in multiple regions (Ashburn, Hillsboro)
+✅ Deployed servers with different CPU types (CPX, CAX)
+✅ Benchmarked CPU performance (single and multi-thread)
+✅ Benchmarked disk I/O performance
+✅ Measured network latency from your location
+✅ Tested inter-server network performance
+✅ Calculated price/performance ratios
+✅ Performed real-world application benchmarks (nginx)
+✅ Documented findings for future reference
+
+**Key takeaways:**
+- Location significantly affects latency to users
+- CAX (ARM) offers best price/performance for compatible workloads
+- Disk performance is consistent across server types
+- Network performance excellent within same data center
+- Real-world testing reveals actual performance differences
+- Benchmarks help make data-driven decisions
+
+---
+
+## Module 7 Quiz
+
+**1. What is the primary factor affecting latency to end users?**
+
+a) Server CPU speed
+b) Geographic distance between user and server
+c) RAM amount
+d) Disk type
+
+<details>
+<summary>Answer</summary>
+b) Geographic distance between user and server
+</details>
+
+**2. Which CPU architecture generally offers the best price/performance ratio?**
+
+a) Intel
+b) AMD
+c) ARM (CAX)
+d) All are equal
+
+<details>
+<summary>Answer</summary>
+c) ARM (CAX) - more cores and RAM per dollar
+</details>
+
+**3. What is a network zone in Hetzner Cloud?**
+
+a) A physical data center
+b) A regional grouping of data centers that can share private networks
+c) A type of firewall
+d) A VPN connection
+
+<details>
+<summary>Answer</summary>
+b) A regional grouping of data centers that can share private networks
+</details>
+
+**4. What is the approximate latency between US East Coast and US West Coast?**
+
+a) 10-20 ms
+b) 60-80 ms
+c) 150-200 ms
+d) 300+ ms
+
+<details>
+<summary>Answer</summary>
+b) 60-80 ms (cross-country)
+</details>
+
+**5. What tool is used for CPU benchmarking in this course?**
+
+a) cpubench
+b) sysbench
+c) speedtest
+d) benchmark-cpu
+
+<details>
+<summary>Answer</summary>
+b) sysbench
+</details>
+
+**6. Can a private network span from Ashburn to Hillsboro?**
+
+a) Yes, same country
+b) No, different network zones
+c) Yes, but slow
+d) Only with VPN
+
+<details>
+<summary>Answer</summary>
+b) No, different network zones (us-east vs us-west)
+</details>
+
+**7. What is the main limitation of ARM (CAX) servers?**
+
+a) Slower performance
+b) More expensive
+c) Software must support ARM64 architecture
+d) No network access
+
+<details>
+<summary>Answer</summary>
+c) Software must support ARM64 architecture
+</details>
+
+**8. In an active-passive multi-region setup, how is the passive region used?**
+
+a) Serves 50% of traffic
+b) Standby backup, only used if primary fails
+c) Handles background jobs
+d) Not used at all
+
+<details>
+<summary>Answer</summary>
+b) Standby backup, only used if primary fails
+</details>
+
+---
+
+## Additional Resources
+
+**Benchmarking Tools:**
+- [sysbench Documentation](https://github.com/akopytov/sysbench)
+- [fio Documentation](https://fio.readthedocs.io/)
+- [iperf3 Documentation](https://iperf.fr/)
+
+**Performance Tuning:**
+- [Brendan Gregg's Performance Site](http://www.brendangregg.com/linuxperf.html)
+- [Linux Performance Analysis](https://netflixtechblog.com/linux-performance-analysis-in-60-000-milliseconds-accc10403c55)
+
+**Multi-Region Architecture:**
+- [AWS Multi-Region Architecture](https://aws.amazon.com/solutions/implementations/multi-region-infrastructure/)
+- [Database Replication Strategies](https://www.postgresql.org/docs/current/high-availability.html)
+
+**GeoDNS Services:**
+- [Cloudflare Load Balancing](https://www.cloudflare.com/load-balancing/)
+- [AWS Route 53](https://aws.amazon.com/route53/)
+
+---
+
+## What's Next?
+
+Congratulations! You now understand how to optimize infrastructure for performance and global reach.
+
+**You learned:**
+- Choosing optimal data center locations
+- CPU architecture comparison (AMD vs ARM)
+- Comprehensive performance benchmarking
+- Multi-region deployment strategies
+- Price/performance analysis
+- Real-world performance testing
+
+**Next Module:** [Module 8 - Administration & Real-World Operations](./module-08-administration.mdcl)
+
+In Module 8, you'll learn professional operational practices including project management, usage auditing, disaster recovery, and working with Hetzner support.
+
+---
+
+**Questions or issues?** Visit the [Hetzner Community Forum](https://community.hetzner.com/).

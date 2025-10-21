@@ -1,0 +1,2028 @@
+# Module 6: Advanced Server Operations
+
+**Time:** 3 hours
+**Difficulty:** Intermediate
+**Prerequisites:** Modules 0, 1, 2, 3, 4, 5
+
+---
+
+## Module Overview
+
+In this module, you'll learn advanced operational techniques that help you troubleshoot problems, automate deployments, and manage servers more effectively. These are the skills that separate basic users from confident cloud operators.
+
+**What you'll learn:**
+- Rescue mode for disaster recovery and troubleshooting
+- Cloud-init for automated server configuration
+- Console logs and serial console for debugging
+- Hetzner API exploration (read-only, no coding required)
+- Advanced troubleshooting techniques
+
+**What you'll build:**
+- Recovery workflow using rescue mode
+- Automated server deployment with cloud-init
+- Custom initialization scripts
+- API-based monitoring setup
+
+**Why this matters:**
+- Servers fail - you need recovery skills
+- Manual configuration doesn't scale
+- Automation prevents human error
+- Debugging skills save hours of frustration
+
+---
+
+## 6.1 — Rescue Mode and Recovery
+
+### What is Rescue Mode?
+
+**Rescue mode** is a special boot environment that allows you to access a server's disk even when the operating system won't boot normally.
+
+**Think of it like a recovery USB drive** you might use on a laptop that won't start - you boot from a separate system to fix problems.
+
+**When to use rescue mode:**
+- Server won't boot (broken bootloader, corrupted OS)
+- Forgot root password and need to reset it
+- Need to repair filesystem corruption
+- Want to access data from unbootable server
+- Need to modify system files that are normally locked
+
+**How rescue mode works:**
+
+```
+Normal Boot:
+Server → Boots from root disk → Ubuntu 24.04 → Your applications
+
+Rescue Mode:
+Server → Boots from Hetzner rescue image → Minimal Linux → Your disk mounted as /mnt
+```
+
+In rescue mode:
+- Server boots into a minimal Linux environment
+- Your actual disk is available but not running
+- You can mount and access/repair your disk
+- You have root access to fix problems
+
+### Enabling Rescue Mode
+
+#### Via Console
+
+**Step 1: Access rescue mode settings**
+
+1. Log in to [Hetzner Cloud Console](https://console.hetzner.cloud/)
+2. Click on your server
+3. Click **"Rescue"** in left menu
+4. Click **"Enable Rescue & Power Cycle"**
+
+**Step 2: Choose rescue system**
+
+- **linux64** (recommended): Standard 64-bit Linux rescue system
+- **linux32**: 32-bit Linux (rarely needed)
+- **freebsd64**: FreeBSD rescue system (if you use FreeBSD)
+
+Choose **linux64**.
+
+**Step 3: Add SSH key (optional but recommended)**
+
+Select your SSH key to automatically enable key-based login in rescue mode.
+
+**Step 4: Enable**
+
+Click **"Enable Rescue & Power Cycle"**.
+
+**Important:** A root password for rescue mode will be displayed. **Copy this password** - you'll need it if SSH key doesn't work.
+
+**Step 5: Server reboots**
+
+Server automatically reboots into rescue mode (~30-60 seconds).
+
+#### Via CLI
+
+```bash{{ copy }}
+# Enable rescue mode
+hcloud server enable-rescue my-server --type linux64 --ssh-key my-laptop
+```
+
+**Output will show root password:**
+
+```
+Rescue mode enabled with root password: RandomPassword123
+```
+
+**Save this password!**
+
+**Reboot server into rescue mode:**
+
+```bash{{ copy }}
+hcloud server reboot my-server
+```
+
+**Or use power cycle:**
+
+```bash{{ copy }}
+hcloud server powercycle my-server
+```
+
+**What's the difference?**
+- `reboot`: Software reboot (graceful shutdown, then restart)
+- `powercycle`: Hard reset (like pressing power button)
+- For rescue mode, both work
+
+### Accessing Server in Rescue Mode
+
+**Wait 30-60 seconds for reboot, then SSH:**
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+**If using SSH key:** You'll connect automatically.
+
+**If not using SSH key:** Enter the rescue password shown earlier.
+
+**You'll see a rescue mode welcome message:**
+
+```
+Welcome to the Hetzner Cloud Rescue System.
+
+Your server has been booted into rescue mode.
+The root filesystem is not mounted.
+```
+
+### Common Rescue Mode Tasks
+
+#### Task 1: Mount Your Disk
+
+**Find your disk:**
+
+```bash{{ execute }}
+lsblk
+```
+
+**Example output:**
+
+```
+NAME   MAJ:MIN RM  SIZE RO TYPE MOUNTPOINT
+sda      8:0    0   40G  0 disk
+├─sda1   8:1    0   40G  0 part
+```
+
+Your main partition is usually `sda1`.
+
+**Mount it:**
+
+```bash{{ execute }}
+mount /dev/sda1 /mnt
+```
+
+**Verify:**
+
+```bash{{ execute }}
+ls /mnt
+```
+
+You should see your Ubuntu filesystem:
+
+```
+bin  boot  dev  etc  home  lib  media  mnt  opt  proc  root  run  sbin  srv  sys  tmp  usr  var
+```
+
+**Now you can access all your files!**
+
+#### Task 2: Reset Root Password
+
+**Scenario:** You forgot the root password and can't log in.
+
+**Solution in rescue mode:**
+
+```bash{{ execute }}
+# Mount disk
+mount /dev/sda1 /mnt
+
+# Chroot into your system
+chroot /mnt
+
+# Change root password
+passwd root
+```
+
+Enter new password twice.
+
+**Exit chroot:**
+
+```bash{{ execute }}
+exit
+```
+
+**Unmount and reboot normally:**
+
+```bash{{ execute }}
+umount /mnt
+reboot
+```
+
+Server reboots into normal mode with new password!
+
+#### Task 3: Repair Filesystem
+
+**Scenario:** Disk corruption, server won't boot.
+
+**Solution:**
+
+```bash{{ execute }}
+# Check filesystem (must be UNMOUNTED)
+fsck -y /dev/sda1
+```
+
+**What is fsck?**
+- **fsck** = "filesystem check"
+- Scans and repairs filesystem errors
+- `-y` = automatically answer "yes" to repair prompts
+
+**Example output:**
+
+```
+fsck from util-linux 2.37.2
+e2fsck 1.46.5 (30-Dec-2021)
+/dev/sda1: clean, 123456/2621440 files, 5678901/10485760 blocks
+```
+
+**If errors found:**
+
+```
+Inode 123456 has illegal block(s). Clear? yes
+```
+
+Let it repair. After completion:
+
+```bash{{ execute }}
+reboot
+```
+
+Server should boot normally now.
+
+#### Task 4: Recover Data from Dead Server
+
+**Scenario:** Server completely broken, but you need to recover data.
+
+**Solution:**
+
+```bash{{ execute }}
+# Mount disk in rescue mode
+mount /dev/sda1 /mnt
+
+# Create tarball of important data
+tar -czf backup-$(date +%Y%m%d).tar.gz /mnt/var/www /mnt/home /mnt/etc
+
+# Find the backup
+ls -lh *.tar.gz
+```
+
+**Transfer to your local machine:**
+
+```bash{{ copy }}
+# From your local machine (new terminal)
+scp root@your-server-ip:backup-20251020.tar.gz ./
+```
+
+Now you have your data safely backed up!
+
+**Alternative - copy to volume:**
+
+If you have a Hetzner volume attached:
+
+```bash{{ execute }}
+# Volume appears as /dev/sdb
+mount /dev/sdb /mnt/volume
+
+# Copy data
+rsync -av /mnt/var/www /mnt/volume/recovery/
+```
+
+#### Task 5: Install Different OS (Advanced)
+
+**Scenario:** Want to install a custom OS not available in Hetzner images.
+
+**Solution:** Use rescue mode to manually install, but this is advanced and beyond this course.
+
+### Disabling Rescue Mode
+
+**After fixing the problem, disable rescue mode so server boots normally.**
+
+#### Via Console
+
+1. Click on server
+2. Click **"Rescue"**
+3. Click **"Disable Rescue"**
+4. Reboot server
+
+#### Via CLI
+
+```bash{{ copy }}
+hcloud server disable-rescue my-server
+hcloud server reboot my-server
+```
+
+Server will now boot from its disk normally.
+
+### Rescue Mode Best Practices
+
+**1. Always unmount before rebooting:**
+
+```bash{{ execute }}
+umount /mnt
+reboot
+```
+
+Prevents data corruption.
+
+**2. Keep rescue password safe:**
+
+Save it in password manager when rescue mode is enabled.
+
+**3. Test rescue mode before emergency:**
+
+Practice accessing rescue mode on a test server so you're familiar when you really need it.
+
+**4. Use with snapshots:**
+
+Before risky operations, create snapshot first:
+
+```bash{{ copy }}
+hcloud server poweroff my-server
+hcloud server create-snapshot my-server --description "before-rescue-mode-repair"
+hcloud server poweron my-server
+```
+
+If repair goes wrong, restore from snapshot.
+
+---
+
+## 6.2 — Cloud-Init and User-Data Customization
+
+### What is Cloud-Init?
+
+**Cloud-init** is a standard for automating server initialization. It runs scripts and configuration during the first boot, allowing you to deploy fully configured servers automatically.
+
+**Think of it as:** A robot that sets up your server exactly how you want it, automatically, every time.
+
+**What cloud-init can do:**
+- Install packages
+- Create users
+- Configure SSH keys
+- Write files
+- Run commands
+- Set hostname
+- Configure networking
+- Update packages
+- Much more
+
+**Why use cloud-init:**
+- **Consistency:** Every server configured identically
+- **Speed:** Automated setup faster than manual
+- **Scalability:** Deploy 1 server or 100 with same effort
+- **Documentation:** Configuration is code (Infrastructure as Code)
+- **Reproducibility:** Recreate exact setup anytime
+
+### Cloud-Init File Format (YAML)
+
+Cloud-init uses **YAML** (Yet Another Markup Language) format.
+
+**YAML basics:**
+
+```yaml
+# Comments start with #
+
+# Key-value pairs
+key: value
+name: John
+age: 30
+
+# Lists
+packages:
+  - nginx
+  - postgresql
+  - redis
+
+# Nested structures
+users:
+  - name: alice
+    groups: sudo
+    shell: /bin/bash
+```
+
+**Important YAML rules:**
+- Indentation matters (use spaces, NOT tabs)
+- 2 or 4 spaces per indent level (be consistent)
+- Colons followed by space
+- List items start with `-`
+
+### Basic Cloud-Init Example
+
+**Create a simple cloud-init file:**
+
+```yaml
+#cloud-config
+
+# Update package cache on first boot
+package_update: true
+
+# Upgrade all packages
+package_upgrade: true
+
+# Install packages
+packages:
+  - nginx
+  - htop
+  - curl
+
+# Create a file
+write_files:
+  - path: /root/welcome.txt
+    content: |
+      Welcome to your auto-configured server!
+      This was created by cloud-init.
+
+# Run commands after everything else
+runcmd:
+  - echo "Setup complete!" >> /var/log/cloud-init-output.log
+```
+
+**Save as `cloud-init.yaml`.**
+
+### Using Cloud-Init via Console
+
+**Step 1: Create server**
+
+1. Log in to Hetzner Cloud Console
+2. Click **"Create Server"**
+3. Choose location, image (Ubuntu 24.04), type, SSH key
+4. Scroll to **"Cloud Config"** section
+5. Paste your cloud-init YAML
+6. Create server
+
+**Step 2: Wait for initialization**
+
+Server boots and cloud-init runs automatically (1-3 minutes).
+
+**Step 3: Verify**
+
+SSH to server:
+
+```bash{{ copy }}
+ssh root@your-server-ip
+```
+
+Check that nginx was installed:
+
+```bash{{ execute }}
+systemctl status nginx
+```
+
+Check the file was created:
+
+```bash{{ execute }}
+cat /root/welcome.txt
+```
+
+### Using Cloud-Init via CLI
+
+**Create server with cloud-init:**
+
+```bash{{ copy }}
+hcloud server create \
+  --name cloud-init-demo \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop \
+  --user-data-from-file cloud-init.yaml
+```
+
+**The `--user-data-from-file` parameter** reads your cloud-init YAML and applies it.
+
+**Alternative - inline user-data:**
+
+For simple scripts:
+
+```bash{{ copy }}
+hcloud server create \
+  --name cloud-init-demo \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop \
+  --user-data '#cloud-config
+packages:
+  - nginx'
+```
+
+But for complex configurations, use a file.
+
+### Cloud-Init Common Tasks
+
+#### Install and Configure Web Server
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - nginx
+
+write_files:
+  - path: /var/www/html/index.html
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head><title>Auto-configured Server</title></head>
+      <body>
+        <h1>This server was configured automatically!</h1>
+        <p>Deployed with cloud-init on Hetzner Cloud</p>
+      </body>
+      </html>
+
+runcmd:
+  - systemctl enable nginx
+  - systemctl start nginx
+```
+
+#### Create Non-Root User with SSH Access
+
+```yaml
+#cloud-config
+
+users:
+  - name: appuser
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILongKeyString... your-email@example.com
+
+# Disable root SSH login
+runcmd:
+  - sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+```
+
+#### Install Docker and Docker Compose
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - lsb-release
+
+runcmd:
+  # Add Docker's official GPG key
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+  # Add Docker repository
+  - echo "deb [arch=amd64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+  # Install Docker
+  - apt-get update
+  - apt-get install -y docker-ce docker-ce-cli containerd.io
+  # Install Docker Compose
+  - curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+  - chmod +x /usr/local/bin/docker-compose
+  # Start Docker
+  - systemctl enable docker
+  - systemctl start docker
+```
+
+#### Configure Firewall (UFW)
+
+```yaml
+#cloud-config
+
+package_update: true
+
+packages:
+  - ufw
+
+runcmd:
+  # Default policies
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  # Allow SSH
+  - ufw allow 22/tcp
+  # Allow HTTP/HTTPS
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  # Enable UFW
+  - ufw --force enable
+```
+
+#### Set Up Automated Backups
+
+```yaml
+#cloud-config
+
+write_files:
+  - path: /root/backup.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      BACKUP_DIR="/mnt/backups"
+      DATE=$(date +%Y%m%d-%H%M%S)
+
+      mkdir -p $BACKUP_DIR
+      tar -czf $BACKUP_DIR/backup-$DATE.tar.gz /var/www /etc/nginx
+
+      # Keep only last 7 days
+      find $BACKUP_DIR -name "backup-*.tar.gz" -mtime +7 -delete
+
+runcmd:
+  # Schedule backup daily at 2 AM
+  - echo "0 2 * * * /root/backup.sh" | crontab -
+```
+
+### Complete Production-Ready Cloud-Init
+
+**Example: Hardened web server with monitoring**
+
+```yaml
+#cloud-config
+
+# Update and upgrade
+package_update: true
+package_upgrade: true
+
+# Install packages
+packages:
+  - nginx
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - htop
+  - curl
+
+# Create non-root user
+users:
+  - name: webadmin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAXXXXXXXX your-key-here
+
+# Create website files
+write_files:
+  - path: /var/www/html/index.html
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Production Server</title>
+        <style>
+          body { font-family: Arial; background: #f0f0f0; padding: 50px; }
+          .container { background: white; padding: 30px; border-radius: 10px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🚀 Production Server</h1>
+          <p>Automatically deployed with cloud-init</p>
+          <p>Server configured with security best practices</p>
+        </div>
+      </body>
+      </html>
+
+  # Fail2Ban configuration
+  - path: /etc/fail2ban/jail.local
+    content: |
+      [DEFAULT]
+      bantime = 3600
+      findtime = 600
+      maxretry = 3
+
+      [sshd]
+      enabled = true
+      port = 22
+
+# Commands to run
+runcmd:
+  # Configure UFW
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+
+  # Configure SSH (disable root login)
+  - sed -i 's/#PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+  - sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+  - systemctl restart sshd
+
+  # Start services
+  - systemctl enable nginx
+  - systemctl start nginx
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
+
+  # Enable automatic security updates
+  - dpkg-reconfigure -plow unattended-upgrades
+
+  # Log completion
+  - echo "Cloud-init setup completed at $(date)" >> /var/log/setup-complete.log
+
+# Reboot after setup (optional)
+power_state:
+  mode: reboot
+  delay: now
+  message: Rebooting after cloud-init setup
+  condition: true
+```
+
+**Deploy this:**
+
+```bash{{ copy }}
+hcloud server create \
+  --name production-web \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop \
+  --user-data-from-file production-cloud-init.yaml
+```
+
+**Result:** Fully configured, hardened web server ready for production in 3-5 minutes!
+
+### Checking Cloud-Init Status
+
+**SSH to server and check cloud-init status:**
+
+```bash{{ execute }}
+# Check if cloud-init finished
+cloud-init status
+```
+
+**Possible outputs:**
+
+```
+status: done
+```
+
+Cloud-init completed successfully.
+
+```
+status: running
+```
+
+Still configuring, wait a bit.
+
+```
+status: error
+```
+
+Something went wrong, check logs.
+
+**View cloud-init logs:**
+
+```bash{{ execute }}
+# Main log
+cat /var/log/cloud-init-output.log
+
+# Detailed log
+cat /var/log/cloud-init.log
+```
+
+**Debug errors:**
+
+If cloud-init failed, logs will show which command failed and why.
+
+### Cloud-Init Best Practices
+
+**1. Test before production:**
+
+Test cloud-init configurations on development servers first.
+
+**2. Use version control:**
+
+Store cloud-init files in Git:
+
+```bash
+git init
+git add cloud-init.yaml
+git commit -m "Initial cloud-init configuration"
+```
+
+**3. Keep it idempotent:**
+
+**Idempotent** means running multiple times produces same result.
+
+**Bad (not idempotent):**
+
+```yaml
+runcmd:
+  - echo "line" >> /etc/config
+```
+
+Running twice adds "line" twice.
+
+**Good (idempotent):**
+
+```yaml
+write_files:
+  - path: /etc/config
+    content: |
+      line
+```
+
+Running multiple times still produces one line.
+
+**4. Separate secrets:**
+
+Don't hardcode passwords/keys in cloud-init files.
+
+**Bad:**
+
+```yaml
+runcmd:
+  - echo "password123" | some-command
+```
+
+**Good:**
+
+Use Hetzner API to inject secrets, or fetch from secret management service.
+
+**5. Use modules:**
+
+Cloud-init has many built-in modules:
+
+```yaml
+# Timezone
+timezone: America/New_York
+
+# Hostname
+hostname: web-prod-1
+
+# Disable root login
+disable_root: true
+
+# Set passwords (for emergency console access)
+chpasswd:
+  expire: false
+  users:
+    - name: root
+      password: $6$rounds=4096$hashedpassword
+      type: text
+```
+
+---
+
+## 6.3 — Console Logs and Serial Console Access
+
+### Understanding Console Output
+
+When a server boots, it produces **console output** - messages about what's happening during startup.
+
+**Similar to:** Watching your computer boot and seeing messages scroll by before the login screen appears.
+
+**Why console logs matter:**
+- Diagnose boot failures
+- See kernel messages
+- Debug cloud-init issues
+- Understand why server won't start
+
+### Accessing Console Logs via Console
+
+**Step 1: Navigate to server**
+
+1. Click on your server in Hetzner Console
+2. Click **"Console"** in left menu
+3. Click **"View Console Output"** tab
+
+**Step 2: View logs**
+
+You'll see boot messages:
+
+```
+[    0.000000] Linux version 5.15.0-84-generic ...
+[    0.234567] ACPI: LAPIC ...
+[    2.345678] systemd[1]: Starting network...
+[    3.456789] cloud-init[789]: Running modules...
+```
+
+**Reading console output:**
+
+- Numbers in brackets `[2.345678]` = timestamp since boot (seconds)
+- Look for `ERROR` or `FAILED` for problems
+- Last few lines show what happened before boot completed or failed
+
+### Accessing Console via CLI
+
+Currently, Hetzner CLI doesn't provide direct console log access. Use the web console for this.
+
+### Serial Console (Interactive Access)
+
+**Serial console** provides interactive terminal access via the browser, even if SSH is broken.
+
+**Use cases:**
+- SSH not working (firewall misconfigured)
+- Network configuration broken
+- Server boots but can't connect via SSH
+- Need to see boot process in real-time
+
+**Access serial console:**
+
+1. Click on server
+2. Click **"Console"** in left menu
+3. Click **"Open Console"** button
+
+**Opens in-browser terminal.**
+
+**You can:**
+- Log in with username/password (if configured)
+- Run commands
+- Fix network/SSH configuration
+- Reboot server
+
+**Limitations:**
+- Slower than SSH
+- Password authentication only (no SSH keys)
+- Copy/paste might be awkward
+
+**Security note:** This is why you should always keep a root password set (even if you disable password SSH login) - for emergency console access.
+
+### Common Console Debugging Scenarios
+
+#### Scenario 1: Server stuck during boot
+
+**Symptoms:**
+- Server shows "running" but can't SSH
+- No response to ping
+
+**Solution:**
+
+1. Open serial console
+2. Watch boot messages in real-time
+3. Look for where it hangs:
+   - Waiting for network
+   - Failed service
+   - Filesystem check
+
+**Example fix:**
+
+If hung on network:
+
+```bash{{ execute }}
+# Login via console
+# Check network status
+ip addr
+
+# Restart networking
+systemctl restart systemd-networkd
+```
+
+#### Scenario 2: Cloud-init failed
+
+**Symptoms:**
+- Server boots but services not installed
+- Cloud-init didn't run
+
+**Solution:**
+
+1. View console logs
+2. Search for `cloud-init`
+3. Look for error messages
+
+**Example errors:**
+
+```
+[   12.345] cloud-init[456]: YAML syntax error on line 23
+```
+
+Fix: YAML indentation error in cloud-init file.
+
+```
+[   15.678] cloud-init[456]: Failed to install package nginx
+```
+
+Fix: Package name typo or repository issue.
+
+#### Scenario 3: Kernel panic
+
+**Symptoms:**
+- Server status shows "running" but completely unresponsive
+- Console shows kernel panic message
+
+**Console output:**
+
+```
+Kernel panic - not syncing: VFS: Unable to mount root fs
+```
+
+**Cause:** Corrupted filesystem or bootloader issue.
+
+**Solution:**
+
+1. Power off server
+2. Boot into rescue mode
+3. Run `fsck` on filesystem
+4. Or restore from snapshot
+
+### Console Logs for Security Auditing
+
+**Check for unauthorized access attempts:**
+
+Console logs show all login attempts:
+
+```
+Failed password for root from 203.0.113.50 port 12345 ssh2
+Failed password for admin from 203.0.113.51 port 23456 ssh2
+Accepted publickey for root from 203.0.113.100 port 34567 ssh2
+```
+
+**Regular review:** Check console logs weekly for suspicious activity.
+
+---
+
+## 6.4 — Exploring the Hetzner API (Read-Only)
+
+### What is an API?
+
+**API** (Application Programming Interface) is a way for programs to interact with services programmatically.
+
+**Hetzner Cloud API** lets you:
+- List servers, volumes, networks
+- Create, modify, delete resources
+- Get metrics and status
+- Automate infrastructure management
+
+**Think of it like:**
+- **Console (web interface):** Clicking buttons with mouse
+- **CLI (hcloud):** Typing commands in terminal
+- **API:** Programs sending requests over internet
+
+All three do the same things, just different interfaces.
+
+### API Basics (No Coding Required)
+
+You don't need to write code to explore the API. We'll use simple tools.
+
+**API request structure:**
+
+```
+HTTP Method + URL + Headers + (optional) Body
+```
+
+**HTTP Methods:**
+- **GET:** Retrieve information (read-only, safe)
+- **POST:** Create new resource
+- **PUT/PATCH:** Update existing resource
+- **DELETE:** Delete resource
+
+**For read-only exploration, we'll only use GET.**
+
+### Using curl to Explore API
+
+**curl** is a command-line tool for making HTTP requests.
+
+**Basic API request:**
+
+```bash{{ execute }}
+curl https://api.hetzner.cloud/v1/servers
+```
+
+**This returns an error:**
+
+```json
+{"error":{"code":"unauthorized","message":"Unable to authenticate"}}
+```
+
+**Why?** API requires authentication.
+
+### Authenticating with API Token
+
+**Get your API token** (from Module 4):
+
+1. Hetzner Console → Security → API Tokens
+2. Use existing token or create new read-only token
+
+**Make authenticated request:**
+
+```bash{{ copy }}
+curl -H "Authorization: Bearer YOUR_API_TOKEN" \
+  https://api.hetzner.cloud/v1/servers
+```
+
+**Replace `YOUR_API_TOKEN` with your actual token.**
+
+**For convenience, save token as environment variable:**
+
+```bash{{ copy }}
+export HCLOUD_TOKEN="your-token-here"
+```
+
+**Now use:**
+
+```bash{{ execute }}
+curl -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers
+```
+
+### Exploring API Endpoints
+
+**List all servers:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | jq
+```
+
+**What is jq?**
+- Command-line JSON processor
+- Makes JSON readable
+- Install: `sudo apt install jq -y`
+- `-s` flag on curl = silent (hide progress)
+
+**Example output:**
+
+```json
+{
+  "servers": [
+    {
+      "id": 123456,
+      "name": "web-prod-1",
+      "status": "running",
+      "public_net": {
+        "ipv4": {
+          "ip": "203.0.113.10"
+        }
+      },
+      "server_type": {
+        "name": "cpx11",
+        "cores": 2,
+        "memory": 2.0,
+        "disk": 40
+      },
+      "datacenter": {
+        "name": "ash-dc1",
+        "location": {
+          "name": "ash",
+          "city": "Ashburn"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Extract specific information with jq:**
+
+```bash{{ execute }}
+# Just server names
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | jq '.servers[].name'
+
+# Server IPs
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | jq '.servers[].public_net.ipv4.ip'
+
+# Name and IP together
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | jq '.servers[] | {name: .name, ip: .public_net.ipv4.ip}'
+```
+
+**Get specific server by ID:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers/123456 | jq
+```
+
+**List volumes:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/volumes | jq
+```
+
+**List networks:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/networks | jq
+```
+
+**List firewalls:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/firewalls | jq
+```
+
+**List snapshots:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/images?type=snapshot | jq
+```
+
+**List available server types:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/server_types | jq
+```
+
+**List available locations:**
+
+```bash{{ execute }}
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/locations | jq
+```
+
+### Practical API Use Cases
+
+#### Use Case 1: Simple Monitoring Script
+
+**Check if all servers are running:**
+
+```bash{{ copy }}
+#!/bin/bash
+
+HCLOUD_TOKEN="your-token-here"
+
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | "\(.name): \(.status)"'
+```
+
+**Output:**
+
+```
+web-prod-1: running
+web-prod-2: running
+db-prod-1: running
+```
+
+**Enhanced version with alerts:**
+
+```bash{{ copy }}
+#!/bin/bash
+
+HCLOUD_TOKEN="your-token-here"
+
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | select(.status != "running") | "\(.name) is \(.status)"'
+```
+
+Only shows servers NOT running (empty output = all running).
+
+**Schedule with cron (check every 5 minutes):**
+
+```bash{{ copy }}
+*/5 * * * * /root/check-servers.sh | mail -s "Server Alert" admin@example.com
+```
+
+#### Use Case 2: Inventory Report
+
+**Generate server inventory:**
+
+```bash{{ copy }}
+#!/bin/bash
+
+HCLOUD_TOKEN="your-token-here"
+
+echo "=== HETZNER CLOUD INVENTORY ==="
+echo "Generated: $(date)"
+echo ""
+
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | "Name: \(.name)\nType: \(.server_type.name)\nIP: \(.public_net.ipv4.ip)\nLocation: \(.datacenter.location.city)\nStatus: \(.status)\n---"'
+```
+
+**Output:**
+
+```
+=== HETZNER CLOUD INVENTORY ===
+Generated: Mon Oct 20 14:30:00 UTC 2025
+
+Name: web-prod-1
+Type: cpx11
+IP: 203.0.113.10
+Location: Ashburn
+Status: running
+---
+Name: db-prod-1
+Type: cpx21
+IP: 203.0.113.11
+Location: Ashburn
+Status: running
+---
+```
+
+#### Use Case 3: Cost Estimation
+
+**Calculate monthly costs:**
+
+```bash{{ copy }}
+#!/bin/bash
+
+HCLOUD_TOKEN="your-token-here"
+
+echo "=== MONTHLY COST ESTIMATE ==="
+
+# Server costs
+echo "Servers:"
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | "\(.name) (\(.server_type.name)): $\(.server_type.prices[] | select(.location == "ash") | .price_monthly.gross)"'
+
+# Volume costs
+echo -e "\nVolumes:"
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/volumes | \
+  jq -r '.volumes[] | "\(.name) (\(.size)GB): $\(.size * 0.049 | round)"'
+```
+
+### API Documentation
+
+**Official API docs:**
+https://docs.hetzner.cloud/
+
+**Explore interactively:**
+
+1. Visit https://docs.hetzner.cloud/
+2. Click on different endpoints
+3. See request/response examples
+4. View all available parameters
+
+**Try the API console:**
+
+Some API documentation sites have interactive consoles where you can test requests directly in the browser.
+
+### API Best Practices
+
+**1. Use read-only tokens for read-only tasks:**
+
+When creating token, choose "Read" permission for monitoring scripts.
+
+**2. Rate limiting:**
+
+Hetzner allows 3600 requests per hour. Don't make excessive requests.
+
+**Good:**
+
+```bash{{ execute }}
+# Check every 5 minutes
+*/5 * * * * /root/check-servers.sh
+```
+
+**Bad:**
+
+```bash{{ execute }}
+# Check every second (exceeds rate limit!)
+* * * * * for i in {1..60}; do /root/check-servers.sh; sleep 1; done
+```
+
+**3. Cache results:**
+
+Don't fetch same data repeatedly:
+
+```bash{{ execute }}
+# Cache server list for 5 minutes
+if [ ! -f /tmp/servers.json ] || [ $(find /tmp/servers.json -mmin +5) ]; then
+  curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+    https://api.hetzner.cloud/v1/servers > /tmp/servers.json
+fi
+
+# Use cached data
+jq '.servers[].name' /tmp/servers.json
+```
+
+**4. Error handling:**
+
+Check if API request succeeded:
+
+```bash{{ execute }}
+RESPONSE=$(curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers)
+
+if echo "$RESPONSE" | jq -e '.error' > /dev/null; then
+  echo "API Error: $(echo $RESPONSE | jq -r '.error.message')"
+  exit 1
+fi
+
+# Process response
+echo "$RESPONSE" | jq '.servers'
+```
+
+---
+
+## Lab 6: Advanced Operations Practice
+
+**Time:** 60-90 minutes
+**Cost:** ~$0.10 (if deleted immediately)
+
+### Lab Objectives
+
+1. Use rescue mode to reset a password
+2. Deploy a server with cloud-init automation
+3. Debug cloud-init with console logs
+4. Use API to monitor infrastructure
+5. Create a comprehensive automation setup
+
+### Step 1: Create Test Server
+
+```bash{{ copy }}
+hcloud server create \
+  --name lab-rescue-test \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop
+```
+
+**Note the IP address.**
+
+### Step 2: Practice Rescue Mode
+
+**Enable rescue mode:**
+
+```bash{{ copy }}
+hcloud server enable-rescue lab-rescue-test --type linux64 --ssh-key my-laptop
+```
+
+**Note the rescue password shown.**
+
+**Reboot into rescue mode:**
+
+```bash{{ execute }}
+hcloud server reboot lab-rescue-test
+```
+
+**Wait 30 seconds, then SSH:**
+
+```bash{{ copy }}
+ssh root@server-ip
+```
+
+You're now in rescue mode!
+
+**Mount the disk:**
+
+```bash{{ execute }}
+lsblk
+mount /dev/sda1 /mnt
+ls /mnt
+```
+
+You should see the Ubuntu filesystem.
+
+**Create a test file:**
+
+```bash{{ execute }}
+echo "I was here in rescue mode!" > /mnt/root/rescue-test.txt
+```
+
+**Unmount and exit:**
+
+```bash{{ execute }}
+umount /mnt
+exit
+```
+
+**Disable rescue and reboot normally:**
+
+```bash{{ execute }}
+hcloud server disable-rescue lab-rescue-test
+hcloud server reboot lab-rescue-test
+```
+
+**Wait 30 seconds, SSH normally:**
+
+```bash{{ copy }}
+ssh root@server-ip
+```
+
+**Verify file exists:**
+
+```bash{{ execute }}
+cat /root/rescue-test.txt
+```
+
+Should show: "I was here in rescue mode!"
+
+**Exit and delete server:**
+
+```bash{{ execute }}
+exit
+hcloud server delete lab-rescue-test
+```
+
+### Step 3: Deploy Server with Cloud-Init
+
+**Create cloud-init configuration:**
+
+```bash{{ execute }}
+nano web-server-cloud-init.yaml
+```
+
+**Paste this configuration:**
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - nginx
+  - ufw
+  - htop
+
+users:
+  - name: webadmin
+    groups: sudo
+    shell: /bin/bash
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    ssh_authorized_keys:
+      - YOUR_PUBLIC_KEY_HERE
+
+write_files:
+  - path: /var/www/html/index.html
+    content: |
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Cloud-Init Lab</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 50px;
+            text-align: center;
+          }
+          .container {
+            background: rgba(255,255,255,0.1);
+            padding: 40px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+          }
+          h1 { font-size: 3em; margin: 0; }
+          p { font-size: 1.2em; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>🚀 Cloud-Init Success!</h1>
+          <p>This server was automatically configured</p>
+          <p>Nginx installed and configured via cloud-init</p>
+          <p>Deployed on Hetzner Cloud</p>
+        </div>
+      </body>
+      </html>
+
+  - path: /root/setup-check.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      echo "=== Setup Verification ==="
+      echo "Nginx status:"
+      systemctl status nginx --no-pager
+      echo ""
+      echo "UFW status:"
+      ufw status
+      echo ""
+      echo "Setup completed at: $(date)"
+
+runcmd:
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+  - systemctl enable nginx
+  - systemctl start nginx
+  - /root/setup-check.sh > /var/log/setup-verification.log
+
+final_message: "Cloud-init setup completed successfully!"
+```
+
+**Replace `YOUR_PUBLIC_KEY_HERE` with your actual public key:**
+
+```bash{{ execute }}
+cat ~/.ssh/id_ed25519.pub
+```
+
+Copy and paste into the yaml file.
+
+**Save and exit** (`Ctrl+O`, Enter, `Ctrl+X`).
+
+**Deploy server:**
+
+```bash{{ copy }}
+hcloud server create \
+  --name lab-cloud-init \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key my-laptop \
+  --user-data-from-file web-server-cloud-init.yaml
+```
+
+**Wait 2-3 minutes for cloud-init to complete.**
+
+### Step 4: Verify Cloud-Init Deployment
+
+**SSH to server:**
+
+```bash{{ copy }}
+ssh root@server-ip
+```
+
+**Check cloud-init status:**
+
+```bash{{ execute }}
+cloud-init status
+```
+
+Should show `status: done`.
+
+**Check setup verification log:**
+
+```bash{{ execute }}
+cat /var/log/setup-verification.log
+```
+
+**Verify nginx is running:**
+
+```bash{{ execute }}
+systemctl status nginx
+```
+
+**Verify website:**
+
+```bash{{ execute }}
+curl http://localhost
+```
+
+Should show HTML with "Cloud-Init Success!"
+
+**Check UFW:**
+
+```bash{{ execute }}
+ufw status
+```
+
+**Try logging in as webadmin (in new terminal):**
+
+```bash{{ copy }}
+ssh webadmin@server-ip
+```
+
+Should work!
+
+**Test sudo:**
+
+```bash{{ execute }}
+sudo apt update
+```
+
+Works without password.
+
+**Exit both SSH sessions.**
+
+### Step 5: Test Website from Browser
+
+**Get server IP:**
+
+```bash{{ execute }}
+hcloud server describe lab-cloud-init | grep "Public IPv4"
+```
+
+**Open in browser:**
+
+```
+http://your-server-ip
+```
+
+You should see the beautiful gradient page: "🚀 Cloud-Init Success!"
+
+### Step 6: View Console Logs
+
+**In Hetzner Console:**
+
+1. Click on `lab-cloud-init` server
+2. Click **"Console"** in left menu
+3. Click **"View Console Output"**
+
+**Search for `cloud-init` messages.**
+
+You should see:
+
+```
+[   10.123] cloud-init[456]: Cloud-init v. 24.1 running...
+[   15.456] cloud-init[456]: Running modules...
+[   25.789] cloud-init[456]: Final message: Cloud-init setup completed successfully!
+```
+
+### Step 7: Use API to Monitor Infrastructure
+
+**Save your API token:**
+
+```bash{{ copy }}
+export HCLOUD_TOKEN="your-token-here"
+```
+
+**Create monitoring script:**
+
+```bash{{ execute }}
+nano check-infrastructure.sh
+```
+
+**Paste:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+echo "=== HETZNER CLOUD STATUS ==="
+echo "Time: $(date)"
+echo ""
+
+echo "Servers:"
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | "  \(.name): \(.status) - \(.public_net.ipv4.ip)"'
+
+echo ""
+echo "Volumes:"
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/volumes | \
+  jq -r '.volumes[] | "  \(.name): \(.size)GB - Attached to: \(.server // "none")"'
+
+echo ""
+echo "Networks:"
+curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/networks | \
+  jq -r '.networks[] | "  \(.name): \(.ip_range)"'
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+chmod +x check-infrastructure.sh
+```
+
+**Run:**
+
+```bash{{ execute }}
+./check-infrastructure.sh
+```
+
+**Example output:**
+
+```
+=== HETZNER CLOUD STATUS ===
+Time: Mon Oct 20 15:45:00 UTC 2025
+
+Servers:
+  lab-cloud-init: running - 203.0.113.10
+
+Volumes:
+
+Networks:
+```
+
+### Step 8: Create API-Based Alert
+
+**Create alert script:**
+
+```bash{{ execute }}
+nano alert-down-servers.sh
+```
+
+**Paste:**
+
+```bash{{ execute }}
+#!/bin/bash
+
+DOWN_SERVERS=$(curl -s -H "Authorization: Bearer $HCLOUD_TOKEN" \
+  https://api.hetzner.cloud/v1/servers | \
+  jq -r '.servers[] | select(.status != "running") | .name')
+
+if [ ! -z "$DOWN_SERVERS" ]; then
+  echo "WARNING: Servers are down!"
+  echo "$DOWN_SERVERS"
+  # Here you could send email, Slack message, etc.
+else
+  echo "All servers running normally"
+fi
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+chmod +x alert-down-servers.sh
+```
+
+**Run:**
+
+```bash{{ execute }}
+./alert-down-servers.sh
+```
+
+Should show: "All servers running normally"
+
+**Test by powering off server:**
+
+```bash{{ execute }}
+hcloud server poweroff lab-cloud-init
+sleep 10
+./alert-down-servers.sh
+```
+
+Should show: "WARNING: Servers are down! lab-cloud-init"
+
+**Power back on:**
+
+```bash{{ execute }}
+hcloud server poweron lab-cloud-init
+```
+
+### Step 9: Cleanup
+
+**Delete server:**
+
+```bash{{ execute }}
+hcloud server delete lab-cloud-init
+```
+
+---
+
+## Lab 6 Summary
+
+**What you accomplished:**
+
+✅ Used rescue mode to access server disk
+✅ Created and modified files in rescue mode
+✅ Deployed fully configured server with cloud-init
+✅ Automated installation of nginx, ufw, users
+✅ Created beautiful auto-deployed website
+✅ Verified cloud-init with console logs
+✅ Used Hetzner API to monitor infrastructure
+✅ Created API-based monitoring and alert scripts
+✅ Practiced complete operational workflow
+
+**Key takeaways:**
+- Rescue mode is essential for disaster recovery
+- Cloud-init enables complete automation
+- Console logs are invaluable for debugging
+- API enables programmatic infrastructure management
+- Automation reduces errors and saves time
+
+---
+
+## Module 6 Quiz
+
+**1. What is rescue mode used for?**
+
+a) Making servers faster
+b) Accessing server disk when OS won't boot
+c) Installing Windows
+d) Increasing storage
+
+<details>
+<summary>Answer</summary>
+b) Accessing server disk when OS won't boot (disaster recovery and troubleshooting)
+</details>
+
+**2. What format does cloud-init use?**
+
+a) JSON
+b) XML
+c) YAML
+d) CSV
+
+<details>
+<summary>Answer</summary>
+c) YAML (Yet Another Markup Language)
+</details>
+
+**3. What command checks cloud-init status?**
+
+a) `cloud-init check`
+b) `systemctl status cloud-init`
+c) `cloud-init status`
+d) `check-cloud-init`
+
+<details>
+<summary>Answer</summary>
+c) `cloud-init status`
+</details>
+
+**4. Where are cloud-init logs located?**
+
+a) `/var/log/cloud-init-output.log`
+b) `/var/log/syslog`
+c) `/var/log/messages`
+d) `/var/log/boot.log`
+
+<details>
+<summary>Answer</summary>
+a) `/var/log/cloud-init-output.log` (also `/var/log/cloud-init.log` for detailed logs)
+</details>
+
+**5. What HTTP method is used for read-only API requests?**
+
+a) POST
+b) PUT
+c) GET
+d) DELETE
+
+<details>
+<summary>Answer</summary>
+c) GET (retrieves information without modifying anything)
+</details>
+
+**6. Before rebooting from rescue mode, what should you always do?**
+
+a) Delete files
+b) Unmount the disk
+c) Create a snapshot
+d) Nothing special
+
+<details>
+<summary>Answer</summary>
+b) Unmount the disk (prevents data corruption)
+</details>
+
+**7. What tool makes API JSON responses readable?**
+
+a) json
+b) format
+c) jq
+d) beautify
+
+<details>
+<summary>Answer</summary>
+c) jq (command-line JSON processor)
+</details>
+
+**8. What does idempotent mean in cloud-init context?**
+
+a) Runs very fast
+b) Running multiple times produces same result
+c) Never fails
+d) Uses minimal resources
+
+<details>
+<summary>Answer</summary>
+b) Running multiple times produces same result (safe to re-run)
+</details>
+
+---
+
+## Additional Resources
+
+**Cloud-Init:**
+- [Cloud-Init Documentation](https://cloudinit.readthedocs.io/)
+- [Cloud-Init Examples](https://cloudinit.readthedocs.io/en/latest/topics/examples.html)
+
+**Hetzner API:**
+- [Hetzner Cloud API Documentation](https://docs.hetzner.cloud/)
+- [API Rate Limits](https://docs.hetzner.cloud/#rate-limiting)
+
+**Rescue Mode:**
+- [Hetzner Rescue System Docs](https://docs.hetzner.com/cloud/servers/rescue-mode/)
+
+**YAML:**
+- [YAML Syntax Guide](https://yaml.org/spec/1.2/spec.html)
+- [YAML Validator](https://www.yamllint.com/)
+
+---
+
+## What's Next?
+
+Congratulations! You've mastered advanced operational techniques.
+
+**You learned:**
+- Rescue mode for disaster recovery
+- Cloud-init for automated deployments
+- Console logs for debugging
+- API exploration and monitoring
+- Advanced troubleshooting workflows
+
+**Next Module:** [Module 7 - Regional Strategy & Performance Tuning](./module-07-regional-performance.mdcl)
+
+In Module 7, you'll learn how to optimize for latency and performance, choose the right hardware, and implement multi-region strategies.
+
+---
+
+**Questions or issues?** Visit the [Hetzner Community Forum](https://community.hetzner.com/).

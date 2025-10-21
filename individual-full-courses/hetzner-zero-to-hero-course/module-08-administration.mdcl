@@ -1,0 +1,1254 @@
+# Module 8: Administration & Operations
+
+**Duration:** 2-3 hours
+**Difficulty:** Intermediate
+
+## Learning Objectives
+
+By the end of this module, you will:
+
+1. Manage users and permissions on your servers
+2. Configure automated backups and maintenance tasks
+3. Monitor server health and resource usage
+4. Set up log management and analysis
+5. Implement alerting for critical events
+6. Use configuration management best practices
+7. Perform routine maintenance operations
+
+---
+
+## 8.1 — User Management & Access Control
+
+### Why Multiple Users Matter
+
+On production servers, you should never use only the root account. Creating individual user accounts provides:
+
+- **Accountability**: Know who did what
+- **Security**: Limit damage from compromised accounts
+- **Principle of Least Privilege**: Users only get necessary permissions
+- **Audit trails**: Track actions to specific individuals
+
+### Creating Users
+
+**Create a new user:**
+
+```bash{{ copy }}
+sudo adduser john
+```
+
+**Interactive prompts:**
+```
+Enter new UNIX password:
+Retype new UNIX password:
+Full Name []: John Smith
+Room Number []:
+Work Phone []:
+Home Phone []:
+Other []:
+Is the information correct? [Y/n] Y
+```
+
+**What is adduser?**
+- `adduser` = User-friendly command to create users
+- Automatically creates home directory (`/home/john`)
+- Sets up default shell and configuration
+- Alternative: `useradd` (lower-level, requires more flags)
+
+**Create user non-interactively:**
+
+```bash{{ copy }}
+sudo adduser --disabled-password --gecos "John Smith,,,," john
+```
+
+- `--disabled-password` = User cannot login with password (SSH key only)
+- `--gecos` = User information (name, etc.) without prompts
+
+### Managing User Passwords
+
+**Set or change password:**
+
+```bash{{ copy }}
+sudo passwd john
+```
+
+**Force password change on next login:**
+
+```bash{{ copy }}
+sudo passwd --expire john
+```
+
+**Lock a user account:**
+
+```bash{{ copy }}
+sudo passwd --lock john
+```
+
+**Unlock:**
+
+```bash{{ copy }}
+sudo passwd --unlock john
+```
+
+### Sudo Access (Administrative Privileges)
+
+Not all users need full root access. The `sudo` command allows specific users to run specific commands as root.
+
+**Add user to sudo group:**
+
+```bash{{ copy }}
+sudo usermod -aG sudo john
+```
+
+**What is usermod?**
+- `usermod` = Modify user account
+- `-aG sudo` = Add to group (append) "sudo" without removing from other groups
+- Users in `sudo` group can run any command with sudo
+
+**Verify user groups:**
+
+```bash{{ copy }}
+groups john
+```
+
+**Example output:**
+```
+john : john sudo
+```
+
+### Fine-Grained Sudo Control
+
+For more precise control, edit the sudoers file.
+
+**IMPORTANT: Always use `visudo` to edit sudoers file** (it checks syntax before saving):
+
+```bash{{ execute }}
+sudo visudo
+```
+
+**Example configurations:**
+
+```
+# Allow john to run all commands
+john ALL=(ALL:ALL) ALL
+
+# Allow john to restart nginx without password
+john ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+
+# Allow john to run apt commands only
+john ALL=(ALL) NOPASSWD: /usr/bin/apt update, /usr/bin/apt upgrade
+
+# Allow group "webadmin" to manage web services
+%webadmin ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx, /usr/bin/systemctl restart apache2
+```
+
+**Syntax breakdown:**
+```
+user/group HOST=(RUNAS) COMMANDS
+```
+
+- `user` = Username (or `%group` for groups)
+- `HOST` = Which servers (ALL = any)
+- `RUNAS` = Which users commands can run as (ALL:ALL = any user/group)
+- `COMMANDS` = Which commands (ALL = any, or specific paths)
+
+### SSH Key Management for Users
+
+**As the new user, generate SSH key:**
+
+```bash{{ copy }}
+ssh-keygen -t ed25519 -C "john@company.com"
+```
+
+**Add user's public key to server:**
+
+On your local machine:
+
+```bash{{ copy }}
+ssh-copy-id john@your-server-ip
+```
+
+Or manually:
+
+```bash{{ copy }}
+ssh john@your-server-ip
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+nano ~/.ssh/authorized_keys
+# Paste public key, save
+chmod 600 ~/.ssh/authorized_keys
+```
+
+### Removing Users
+
+**Delete user but keep home directory:**
+
+```bash{{ copy }}
+sudo deluser john
+```
+
+**Delete user and remove home directory:**
+
+```bash{{ copy }}
+sudo deluser --remove-home john
+```
+
+**Delete user and all files owned by them:**
+
+```bash{{ copy }}
+sudo deluser --remove-all-files john
+```
+
+### Listing Users
+
+**View all users:**
+
+```bash{{ execute }}
+cat /etc/passwd
+```
+
+**View only human users (UID >= 1000):**
+
+```bash{{ execute }}
+awk -F: '$3 >= 1000 {print $1}' /etc/passwd
+```
+
+**See who's logged in:**
+
+```bash{{ execute }}
+who
+```
+
+**See recent logins:**
+
+```bash{{ execute }}
+last
+```
+
+**See failed login attempts:**
+
+```bash{{ execute }}
+sudo lastb
+```
+
+---
+
+## 8.2 — Automated Backups & Maintenance
+
+### Backup Strategies
+
+**What to backup:**
+
+1. **Configuration files**
+   - `/etc/` directory
+   - Application configs
+   - Web server configs
+
+2. **Application data**
+   - Databases
+   - User uploads
+   - Application files
+
+3. **Logs** (optional, for compliance)
+   - System logs
+   - Application logs
+
+### Simple Backup Script
+
+Create a backup script:
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/backup.sh
+```
+
+**Basic backup script:**
+
+```bash{{ copy }}
+#!/bin/bash
+# Simple server backup script
+
+# Configuration
+BACKUP_DIR="/var/backups"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BACKUP_NAME="server-backup-${TIMESTAMP}.tar.gz"
+
+# Create backup directory
+mkdir -p ${BACKUP_DIR}
+
+# Backup important directories
+tar -czf ${BACKUP_DIR}/${BACKUP_NAME} \
+    /etc \
+    /home \
+    /var/www \
+    --exclude='/var/www/*/cache' \
+    --exclude='/var/www/*/tmp'
+
+# Delete backups older than 7 days
+find ${BACKUP_DIR} -name "server-backup-*.tar.gz" -mtime +7 -delete
+
+# Log success
+echo "$(date): Backup completed: ${BACKUP_NAME}" >> /var/log/backup.log
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/backup.sh
+```
+
+**Test the script:**
+
+```bash{{ execute }}
+sudo /usr/local/bin/backup.sh
+```
+
+**Verify backup:**
+
+```bash{{ execute }}
+ls -lh /var/backups/
+```
+
+### Database Backups
+
+**PostgreSQL backup:**
+
+```bash{{ copy }}
+#!/bin/bash
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+sudo -u postgres pg_dump mydb > /var/backups/mydb-${TIMESTAMP}.sql
+gzip /var/backups/mydb-${TIMESTAMP}.sql
+find /var/backups -name "mydb-*.sql.gz" -mtime +7 -delete
+```
+
+**MySQL/MariaDB backup:**
+
+```bash{{ copy }}
+#!/bin/bash
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+mysqldump -u root -p'password' --all-databases > /var/backups/mysql-${TIMESTAMP}.sql
+gzip /var/backups/mysql-${TIMESTAMP}.sql
+find /var/backups -name "mysql-*.sql.gz" -mtime +7 -delete
+```
+
+**IMPORTANT:** Never store database passwords in scripts in production. Use MySQL config files or environment variables.
+
+### Scheduling Backups with Cron
+
+**Edit root's crontab:**
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+**Example cron schedules:**
+
+```
+# Run backup daily at 2 AM
+0 2 * * * /usr/local/bin/backup.sh
+
+# Run database backup every 6 hours
+0 */6 * * * /usr/local/bin/backup-db.sh
+
+# Run weekly maintenance on Sundays at 3 AM
+0 3 * * 0 /usr/local/bin/weekly-maintenance.sh
+```
+
+**Cron syntax:**
+```
+* * * * * command
+│ │ │ │ │
+│ │ │ │ └─ Day of week (0-7, 0 and 7 are Sunday)
+│ │ │ └─── Month (1-12)
+│ │ └───── Day of month (1-31)
+│ └─────── Hour (0-23)
+└───────── Minute (0-59)
+```
+
+**Common patterns:**
+- `0 2 * * *` = Every day at 2:00 AM
+- `*/15 * * * *` = Every 15 minutes
+- `0 */4 * * *` = Every 4 hours
+- `0 0 * * 0` = Every Sunday at midnight
+- `0 0 1 * *` = First day of every month at midnight
+
+**View scheduled cron jobs:**
+
+```bash{{ execute }}
+sudo crontab -l
+```
+
+**View cron execution log:**
+
+```bash{{ execute }}
+sudo grep CRON /var/log/syslog | tail -20
+```
+
+### Off-Server Backup Storage
+
+**Copy backups to Hetzner Volume (different server):**
+
+```bash{{ copy }}
+rsync -avz /var/backups/ root@backup-server-ip:/mnt/backup/
+```
+
+**Copy to object storage (if available):**
+
+```bash{{ copy }}
+# Using rclone (install first: curl https://rclone.org/install.sh | sudo bash)
+rclone copy /var/backups/ remote:my-bucket/server-backups/
+```
+
+### Automated System Updates
+
+**Create update script:**
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/update-system.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# Automated system updates
+
+# Update package lists
+apt update
+
+# Upgrade packages (non-interactive)
+DEBIAN_FRONTEND=noninteractive apt upgrade -y
+
+# Remove unused packages
+apt autoremove -y
+
+# Clean package cache
+apt clean
+
+# Log completion
+echo "$(date): System updated" >> /var/log/system-updates.log
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/update-system.sh
+```
+
+**Schedule weekly updates:**
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add:
+```
+# Update system every Sunday at 4 AM
+0 4 * * 0 /usr/local/bin/update-system.sh
+```
+
+**Alternative: Use unattended-upgrades**
+
+Ubuntu's built-in automatic update system:
+
+```bash{{ execute }}
+sudo apt install unattended-upgrades -y
+```
+
+**Configure:**
+
+```bash{{ execute }}
+sudo dpkg-reconfigure -plow unattended-upgrades
+```
+
+Select "Yes" to enable automatic updates.
+
+**Check configuration:**
+
+```bash{{ execute }}
+cat /etc/apt/apt.conf.d/50unattended-upgrades
+```
+
+---
+
+## 8.3 — Server Monitoring & Health Checks
+
+### Real-Time Resource Monitoring
+
+**View CPU, memory, processes:**
+
+```bash{{ execute }}
+top
+```
+
+**Better alternative - htop:**
+
+```bash{{ execute }}
+sudo apt install htop -y
+htop
+```
+
+**htop shortcuts:**
+- `F2` = Setup
+- `F5` = Tree view
+- `F6` = Sort by column
+- `F9` = Kill process
+- `q` = Quit
+
+**Check disk space:**
+
+```bash{{ execute }}
+df -h
+```
+
+**Check inode usage:**
+
+```bash{{ execute }}
+df -i
+```
+
+**Check memory usage:**
+
+```bash{{ execute }}
+free -h
+```
+
+**Check CPU info:**
+
+```bash{{ execute }}
+lscpu
+```
+
+**Check system load average:**
+
+```bash{{ execute }}
+uptime
+```
+
+**Example output:**
+```
+14:23:01 up 10 days,  5:32,  2 users,  load average: 0.52, 0.48, 0.51
+```
+
+**What is load average?**
+- Three numbers: 1-minute, 5-minute, 15-minute averages
+- Number of processes waiting for CPU
+- For 2 vCPU server:
+  - `< 2.0` = Normal
+  - `2.0-4.0` = Getting busy
+  - `> 4.0` = Overloaded
+
+### Process Monitoring
+
+**List all processes:**
+
+```bash{{ execute }}
+ps aux
+```
+
+**Find specific process:**
+
+```bash{{ copy }}
+ps aux | grep nginx
+```
+
+**Show process tree:**
+
+```bash{{ execute }}
+pstree
+```
+
+**Monitor process in real-time:**
+
+```bash{{ copy }}
+watch -n 1 'ps aux | grep nginx'
+```
+
+### Network Monitoring
+
+**Check network connections:**
+
+```bash{{ execute }}
+sudo ss -tulnp
+```
+
+**What is ss?**
+- `ss` = Socket statistics
+- `-t` = TCP connections
+- `-u` = UDP connections
+- `-l` = Listening sockets
+- `-n` = Show numbers (don't resolve names)
+- `-p` = Show process using socket
+
+**Check network traffic:**
+
+```bash{{ execute }}
+sudo apt install iftop -y
+sudo iftop
+```
+
+**Monitor bandwidth by process:**
+
+```bash{{ execute }}
+sudo apt install nethogs -y
+sudo nethogs
+```
+
+### Disk I/O Monitoring
+
+**Check disk I/O:**
+
+```bash{{ execute }}
+sudo apt install iotop -y
+sudo iotop
+```
+
+**Check specific disk performance:**
+
+```bash{{ execute }}
+iostat -x 1
+```
+
+### Creating a Simple Monitoring Script
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/health-check.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# Simple health monitoring script
+
+LOGFILE="/var/log/health-check.log"
+TIMESTAMP=$(date "+%Y-%m-%d %H:%M:%S")
+
+# Check disk space
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 80 ]; then
+    echo "$TIMESTAMP WARNING: Disk usage at ${DISK_USAGE}%" >> $LOGFILE
+fi
+
+# Check memory
+MEM_AVAILABLE=$(free | awk 'NR==2 {print int($7/$2 * 100)}')
+if [ $MEM_AVAILABLE -lt 20 ]; then
+    echo "$TIMESTAMP WARNING: Available memory at ${MEM_AVAILABLE}%" >> $LOGFILE
+fi
+
+# Check load average
+LOAD=$(uptime | awk -F'load average:' '{print $2}' | awk '{print $1}' | sed 's/,//')
+LOAD_INT=$(echo $LOAD | awk '{print int($1)}')
+CPU_COUNT=$(nproc)
+if [ $LOAD_INT -gt $CPU_COUNT ]; then
+    echo "$TIMESTAMP WARNING: Load average $LOAD exceeds CPU count $CPU_COUNT" >> $LOGFILE
+fi
+
+# Check if critical services are running
+for service in nginx postgresql; do
+    if ! systemctl is-active --quiet $service; then
+        echo "$TIMESTAMP ERROR: Service $service is not running" >> $LOGFILE
+    fi
+done
+
+echo "$TIMESTAMP Health check completed" >> $LOGFILE
+```
+
+**Make executable:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/health-check.sh
+```
+
+**Run every 5 minutes:**
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add:
+```
+*/5 * * * * /usr/local/bin/health-check.sh
+```
+
+---
+
+## 8.4 — Log Management
+
+### Important Log Locations
+
+**System logs:**
+- `/var/log/syslog` = General system messages
+- `/var/log/auth.log` = Authentication logs (SSH, sudo)
+- `/var/log/kern.log` = Kernel messages
+- `/var/log/dmesg` = Boot messages
+
+**Application logs:**
+- `/var/log/nginx/` = Nginx web server
+- `/var/log/apache2/` = Apache web server
+- `/var/log/mysql/` = MySQL/MariaDB
+- `/var/log/postgresql/` = PostgreSQL
+
+### Viewing Logs
+
+**View entire log:**
+
+```bash{{ execute }}
+sudo cat /var/log/syslog
+```
+
+**View last 50 lines:**
+
+```bash{{ execute }}
+sudo tail -50 /var/log/syslog
+```
+
+**Follow log in real-time:**
+
+```bash{{ execute }}
+sudo tail -f /var/log/syslog
+```
+
+**Search logs:**
+
+```bash{{ copy }}
+sudo grep "error" /var/log/syslog
+```
+
+**Search case-insensitive:**
+
+```bash{{ copy }}
+sudo grep -i "failed" /var/log/auth.log
+```
+
+**Count occurrences:**
+
+```bash{{ copy }}
+sudo grep -c "Failed password" /var/log/auth.log
+```
+
+### Using journalctl (systemd logs)
+
+**View all logs:**
+
+```bash{{ execute }}
+sudo journalctl
+```
+
+**View logs for specific service:**
+
+```bash{{ copy }}
+sudo journalctl -u nginx
+```
+
+**Follow logs in real-time:**
+
+```bash{{ copy }}
+sudo journalctl -u nginx -f
+```
+
+**View logs since time:**
+
+```bash{{ execute }}
+sudo journalctl --since "1 hour ago"
+sudo journalctl --since "2024-10-20 10:00:00"
+sudo journalctl --since today
+```
+
+**View logs with priority level:**
+
+```bash{{ execute }}
+sudo journalctl -p err
+```
+
+**Priority levels:**
+- `emerg` = Emergency (0)
+- `alert` = Alert (1)
+- `crit` = Critical (2)
+- `err` = Error (3)
+- `warning` = Warning (4)
+- `notice` = Notice (5)
+- `info` = Info (6)
+- `debug` = Debug (7)
+
+**View kernel messages:**
+
+```bash{{ execute }}
+sudo journalctl -k
+```
+
+**View boot messages:**
+
+```bash{{ execute }}
+sudo journalctl -b
+```
+
+### Log Rotation
+
+Logs can grow very large. Log rotation automatically compresses and deletes old logs.
+
+**View logrotate config:**
+
+```bash{{ execute }}
+cat /etc/logrotate.conf
+```
+
+**View application-specific rotation:**
+
+```bash{{ execute }}
+ls /etc/logrotate.d/
+cat /etc/logrotate.d/nginx
+```
+
+**Example nginx logrotate config:**
+
+```
+/var/log/nginx/*.log {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
+    endscript
+}
+```
+
+**What this means:**
+- `daily` = Rotate logs every day
+- `rotate 14` = Keep 14 days of logs
+- `compress` = Compress old logs with gzip
+- `delaycompress` = Don't compress the most recent rotation
+- `notifempty` = Don't rotate if log is empty
+- `create 0640 www-data adm` = Create new log with these permissions/owner
+- `postrotate` = Run this command after rotation (reload nginx)
+
+**Manually trigger logrotate:**
+
+```bash{{ execute }}
+sudo logrotate -f /etc/logrotate.conf
+```
+
+### Analyzing Logs
+
+**Find failed SSH login attempts:**
+
+```bash{{ execute }}
+sudo grep "Failed password" /var/log/auth.log | tail -20
+```
+
+**Count failed logins by IP:**
+
+```bash{{ execute }}
+sudo grep "Failed password" /var/log/auth.log | awk '{print $(NF-3)}' | sort | uniq -c | sort -nr
+```
+
+**Find successful SSH logins:**
+
+```bash{{ execute }}
+sudo grep "Accepted" /var/log/auth.log | tail -20
+```
+
+**Find nginx errors:**
+
+```bash{{ execute }}
+sudo grep "error" /var/log/nginx/error.log | tail -20
+```
+
+**Most requested URLs:**
+
+```bash{{ execute }}
+sudo awk '{print $7}' /var/log/nginx/access.log | sort | uniq -c | sort -nr | head -20
+```
+
+**Requests by HTTP status code:**
+
+```bash{{ execute }}
+sudo awk '{print $9}' /var/log/nginx/access.log | sort | uniq -c | sort -nr
+```
+
+---
+
+## 8.5 — Alerting & Notifications
+
+### Email Alerts
+
+**Install mail utilities:**
+
+```bash{{ execute }}
+sudo apt install mailutils -y
+```
+
+**Send test email:**
+
+```bash{{ copy }}
+echo "Test email from server" | mail -s "Test Subject" your-email@example.com
+```
+
+**Send email with attachment:**
+
+```bash{{ copy }}
+echo "Server health report attached" | mail -s "Health Report" -A /var/log/health-check.log your-email@example.com
+```
+
+### Alert Script for Critical Events
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/alert-critical.sh
+```
+
+```bash{{ copy }}
+#!/bin/bash
+# Alert script for critical server events
+
+ALERT_EMAIL="admin@example.com"
+HOSTNAME=$(hostname)
+
+# Function to send alert
+send_alert() {
+    SUBJECT="$1"
+    MESSAGE="$2"
+    echo "$MESSAGE" | mail -s "[$HOSTNAME] $SUBJECT" $ALERT_EMAIL
+}
+
+# Check disk space
+DISK_USAGE=$(df -h / | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ $DISK_USAGE -gt 90 ]; then
+    send_alert "CRITICAL: Disk space at ${DISK_USAGE}%" "Root partition is ${DISK_USAGE}% full. Immediate action required."
+fi
+
+# Check if services are down
+for service in nginx postgresql; do
+    if ! systemctl is-active --quiet $service; then
+        send_alert "CRITICAL: $service is down" "Service $service is not running on $HOSTNAME"
+    fi
+done
+
+# Check memory pressure
+MEM_AVAILABLE=$(free | awk 'NR==2 {print int($7/$2 * 100)}')
+if [ $MEM_AVAILABLE -lt 10 ]; then
+    send_alert "CRITICAL: Low memory" "Only ${MEM_AVAILABLE}% memory available on $HOSTNAME"
+fi
+```
+
+**Make executable and schedule:**
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/alert-critical.sh
+sudo crontab -e
+```
+
+Add:
+```
+*/10 * * * * /usr/local/bin/alert-critical.sh
+```
+
+### Webhook Alerts (Slack, Discord)
+
+**Slack webhook alert:**
+
+```bash{{ copy }}
+#!/bin/bash
+# Send alert to Slack
+
+WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+MESSAGE="$1"
+
+curl -X POST -H 'Content-type: application/json' \
+--data "{\"text\":\"$MESSAGE\"}" \
+$WEBHOOK_URL
+```
+
+**Discord webhook alert:**
+
+```bash{{ copy }}
+#!/bin/bash
+# Send alert to Discord
+
+WEBHOOK_URL="https://discord.com/api/webhooks/YOUR/WEBHOOK"
+MESSAGE="$1"
+
+curl -X POST -H 'Content-type: application/json' \
+--data "{\"content\":\"$MESSAGE\"}" \
+$WEBHOOK_URL
+```
+
+---
+
+## Lab 8: Complete Server Setup with Monitoring
+
+**Time:** 45-60 minutes
+**Cost:** ~$0.10-0.15
+
+### Lab Objectives
+
+1. Create a server with proper user management
+2. Set up automated backups
+3. Configure monitoring and alerting
+4. Test the entire administration workflow
+
+### Step 1: Create Lab Server
+
+```bash{{ copy }}
+hcloud server create \
+  --name admin-lab \
+  --type cpx11 \
+  --image ubuntu-24.04 \
+  --location ash \
+  --ssh-key your-key-name
+```
+
+Get the IP:
+
+```bash{{ execute }}
+hcloud server list
+```
+
+### Step 2: Create Admin User
+
+SSH into server:
+
+```bash{{ copy }}
+ssh root@admin-lab-ip
+```
+
+Create admin user:
+
+```bash{{ execute }}
+sudo adduser admin
+sudo usermod -aG sudo admin
+```
+
+Set up SSH key for admin:
+
+```bash{{ execute }}
+su - admin
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+nano ~/.ssh/authorized_keys
+# Paste your public key
+chmod 600 ~/.ssh/authorized_keys
+exit
+```
+
+Test login as admin:
+
+```bash{{ copy }}
+ssh admin@admin-lab-ip
+```
+
+### Step 3: Set Up Backup Script
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/backup.sh
+```
+
+Paste the backup script from section 8.2, make executable:
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/backup.sh
+```
+
+Test backup:
+
+```bash{{ execute }}
+sudo /usr/local/bin/backup.sh
+ls -lh /var/backups/
+```
+
+Schedule daily backups:
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add:
+```
+0 2 * * * /usr/local/bin/backup.sh
+```
+
+### Step 4: Set Up Monitoring
+
+Install htop and iotop:
+
+```bash{{ execute }}
+sudo apt update
+sudo apt install htop iotop -y
+```
+
+Create health check script:
+
+```bash{{ execute }}
+sudo nano /usr/local/bin/health-check.sh
+```
+
+Paste health check script from section 8.3, make executable:
+
+```bash{{ execute }}
+sudo chmod +x /usr/local/bin/health-check.sh
+```
+
+Schedule health checks:
+
+```bash{{ execute }}
+sudo crontab -e
+```
+
+Add:
+```
+*/5 * * * * /usr/local/bin/health-check.sh
+```
+
+### Step 5: Test Monitoring
+
+Check resource usage:
+
+```bash{{ execute }}
+htop
+df -h
+free -h
+```
+
+View health check log:
+
+```bash{{ execute }}
+sudo tail -f /var/log/health-check.log
+```
+
+### Step 6: View Logs
+
+Check system logs:
+
+```bash{{ execute }}
+sudo journalctl -n 50
+sudo tail -20 /var/log/syslog
+sudo tail -20 /var/log/auth.log
+```
+
+### Step 7: Cleanup
+
+Exit server:
+
+```bash{{ execute }}
+exit
+```
+
+Delete lab server:
+
+```bash{{ copy }}
+hcloud server delete admin-lab
+```
+
+---
+
+## Lab 8 Summary
+
+**What you accomplished:**
+
+✅ Created admin user with sudo access
+✅ Set up SSH key authentication
+✅ Created automated backup script
+✅ Scheduled backups with cron
+✅ Created health monitoring script
+✅ Configured log monitoring
+✅ Practiced server administration tasks
+
+**Key takeaways:**
+- Never use root account for daily operations
+- Automate backups and verify they work
+- Monitor server health proactively
+- Keep logs organized and rotated
+- Set up alerts before problems occur
+
+---
+
+## Module 8 Quiz
+
+**1. What command adds a user to the sudo group?**
+
+a) `sudo usermod -a sudo john`
+b) `sudo usermod -aG sudo john`
+c) `sudo addgroup john sudo`
+d) `sudo gpasswd -a sudo john`
+
+<details>
+<summary>Answer</summary>
+b) `sudo usermod -aG sudo john` - The `-aG` flags append the user to the group.
+</details>
+
+**2. What does the cron schedule `0 */6 * * *` mean?**
+
+a) Every 6 minutes
+b) Every 6 hours at minute 0
+c) Every day at 6 AM
+d) Every 6 days
+
+<details>
+<summary>Answer</summary>
+b) Every 6 hours at minute 0 - Runs at 00:00, 06:00, 12:00, 18:00.
+</details>
+
+**3. Which command shows real-time system resource usage?**
+
+a) `ps aux`
+b) `top` or `htop`
+c) `free -h`
+d) `df -h`
+
+<details>
+<summary>Answer</summary>
+b) `top` or `htop` - Shows live CPU, memory, and process information.
+</details>
+
+**4. What is the recommended way to edit the sudoers file?**
+
+a) `nano /etc/sudoers`
+b) `vim /etc/sudoers`
+c) `sudo visudo`
+d) `edit /etc/sudoers`
+
+<details>
+<summary>Answer</summary>
+c) `sudo visudo` - Validates syntax before saving to prevent lockouts.
+</details>
+
+**5. Which log file contains SSH authentication attempts?**
+
+a) `/var/log/syslog`
+b) `/var/log/auth.log`
+c) `/var/log/ssh.log`
+d) `/var/log/secure`
+
+<details>
+<summary>Answer</summary>
+b) `/var/log/auth.log` - On Ubuntu/Debian systems (on RHEL it's `/var/log/secure`).
+</details>
+
+---
+
+## Additional Resources
+
+**Official Documentation:**
+- [Ubuntu Server Guide - User Management](https://ubuntu.com/server/docs/security-users)
+- [Cron and Crontab Documentation](https://man7.org/linux/man-pages/man5/crontab.5.html)
+- [systemd Journal Documentation](https://www.freedesktop.org/software/systemd/man/journalctl.html)
+
+**Tools:**
+- [htop - Interactive Process Viewer](https://htop.dev/)
+- [logrotate - Log Rotation](https://linux.die.net/man/8/logrotate)
+- [rsync - File Synchronization](https://rsync.samba.org/)
+
+---
+
+## What's Next?
+
+In **Module 9: Capstone Project**, you'll bring together everything you've learned to:
+
+- Design and deploy a complete multi-server application
+- Implement security, networking, and storage
+- Set up monitoring and backups
+- Handle a simulated production scenario
+
+---
+
+**Module 8 Complete!** 🎉
+
+You now have the skills to properly administer and maintain Linux servers in production.
