@@ -1,0 +1,1 @@
+For the week 4 devops-path, i would like to cover all other Hetzner Cloud services apart from the servers. This includes Load Balancers, Firewalls, Floating IPs, Volumes and Snapshots, S3/Storage etc. I will also cover how to use the Hetzner Cloud CLI tool hcloud to manage these services from the command line. The labs for the .mdcl
