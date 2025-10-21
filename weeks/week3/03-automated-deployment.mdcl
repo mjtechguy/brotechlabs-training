@@ -1,0 +1,985 @@
+# Automated Infrastructure Deployment
+
+Now let's put everything together! You'll use cloud-init and bash to automatically deploy infrastructure with a custom website.
+
+`This lab combines cloud-init + bash to deploy NPM, Code-Server, and a custom Nginx website with SSL` {{ note }}
+
+---
+
+## What You're Building
+
+- Nginx Proxy Manager (reverse proxy with SSL)
+- Custom Nginx website with your own HTML landing page
+- Code-Server (VS Code in browser)
+- SSL certificates via DNS challenge (Cloudflare)
+- Everything automated with scripts
+
+**Time comparison:**
+- Manual: 3+ hours
+- Automated: 30-40 minutes
+
+---
+
+## Part 1: Prepare Cloud-Init Configuration
+
+### Step 1: Get Your SSH Key
+
+`cat ~/.ssh/id_ed25519.pub` {{ execute }}
+
+Copy the entire output.
+
+### Step 2: Create Cloud-Init File
+
+`nano cloud-init.yaml` {{ execute }}
+
+Paste this (replace YOUR_SSH_KEY with your actual key):
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-plugin
+  - curl
+  - ufw
+  - git
+
+timezone: America/New_York
+
+users:
+  - name: admin
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    ssh_authorized_keys:
+      - YOUR_SSH_KEY
+
+ssh_pwauth: false
+
+runcmd:
+  - systemctl start docker
+  - systemctl enable docker
+  - docker network create web_network || true
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw allow 81/tcp
+  - ufw --force enable
+  - mkdir -p /opt/npm
+  - mkdir -p /opt/code-server
+  - mkdir -p /opt/website
+  - mkdir -p /opt/scripts
+  - chown -R admin:admin /opt/npm
+  - chown -R admin:admin /opt/code-server
+  - chown -R admin:admin /opt/website
+  - chown -R admin:admin /opt/scripts
+```
+
+Save and exit.
+
+---
+
+## Part 2: Create the Server
+
+### Step 1: Go to Hetzner Cloud
+
+https://console.hetzner.cloud
+
+### Step 2: Create Server
+
+Click "Add Server"
+
+**Settings:**
+- Location: Closest to you
+- Image: Ubuntu 22.04
+- Type: CX11 or better
+- Cloud config: Paste your entire `cloud-init.yaml`
+- Name: `week3-automated`
+
+Create the server and note the IP address.
+
+### Step 3: Wait for Cloud-Init
+
+Wait 2-3 minutes for cloud-init to finish.
+
+### Step 4: Connect
+
+`ssh admin@YOUR_SERVER_IP` {{ copy }}
+
+### Step 5: Verify Cloud-Init
+
+`cloud-init status --wait` {{ execute }}
+
+Should show: `status: done`
+
+Verify Docker:
+
+`docker --version` {{ execute }}
+
+Verify network:
+
+`docker network ls | grep web_network` {{ execute }}
+
+---
+
+## Part 3: Configure DNS
+
+Before deploying, set up DNS records in Cloudflare.
+
+### Step 1: Get Your Server IP
+
+`hostname -I | awk '{print $1}'` {{ execute }}
+
+### Step 2: Add DNS Records in Cloudflare
+
+Log into Cloudflare and add these A records:
+
+| Type | Name | Value | Proxy Status |
+|------|------|-------|--------------|
+| A | npm | YOUR_SERVER_IP | DNS only (gray cloud) |
+| A | code | YOUR_SERVER_IP | DNS only (gray cloud) |
+| A | www | YOUR_SERVER_IP | DNS only (gray cloud) |
+
+**Important:** Set proxy status to "DNS only" (gray cloud icon), NOT proxied!
+
+### Step 3: Wait for DNS
+
+DNS takes 5-10 minutes. Test:
+
+`nslookup npm.yourdomain.com` {{ copy }}
+
+`nslookup code.yourdomain.com` {{ copy }}
+
+`nslookup www.yourdomain.com` {{ copy }}
+
+All should return your server IP.
+
+---
+
+## Part 4: Get Cloudflare API Credentials
+
+For DNS challenge SSL certificates, you need Cloudflare API credentials.
+
+### Step 1: Get Zone ID
+
+In Cloudflare dashboard:
+1. Select your domain
+2. Scroll down on Overview page
+3. Find "Zone ID" in the right sidebar
+4. Copy it
+
+### Step 2: Create API Token
+
+In Cloudflare dashboard:
+1. Click your profile icon → "My Profile"
+2. Click "API Tokens" tab
+3. Click "Create Token"
+4. Use "Edit zone DNS" template
+5. Set permissions:
+   - Zone - DNS - Edit
+   - Zone - Zone - Read
+6. Include your specific zone
+7. Create token and copy it
+
+**Save both Zone ID and API Token - you'll need them!**
+
+---
+
+## Part 5: Deploy Nginx Proxy Manager
+
+### Step 1: Create Config Directory
+
+`cd /opt/npm` {{ execute }}
+
+### Step 2: Create Docker Compose File
+
+`nano docker-compose.yml` {{ execute }}
+
+```yaml
+version: '3.8'
+
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "81:81"
+    environment:
+      DISABLE_IPV6: 'true'
+    volumes:
+      - npm-data:/data
+      - npm-letsencrypt:/etc/letsencrypt
+    networks:
+      - web_network
+
+volumes:
+  npm-data:
+  npm-letsencrypt:
+
+networks:
+  web_network:
+    external: true
+```
+
+Save and exit.
+
+### Step 3: Deploy NPM
+
+`docker compose up -d` {{ execute }}
+
+### Step 4: Verify
+
+`docker ps` {{ execute }}
+
+Should show nginx-proxy-manager running.
+
+### Step 5: Access NPM
+
+Open browser: `http://YOUR_SERVER_IP:81`
+
+**Default login:**
+- Email: `admin@example.com`
+- Password: `changeme`
+
+**IMPORTANT:** Change these immediately!
+
+1. Log in
+2. Click email (top right) → "Edit Details"
+3. Change email and password
+4. Save
+
+---
+
+## Part 6: Create Custom Website Deployment Script
+
+Now let's create a bash script that deploys a custom nginx website.
+
+### Step 1: Create Deployment Script
+
+`nano /opt/scripts/deploy-website.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+set -e
+
+echo "=================================="
+echo "Deploying Custom Website"
+echo "=================================="
+
+WEBSITE_DIR="/opt/website"
+HTML_DIR="$WEBSITE_DIR/html"
+
+echo ""
+echo "Step 1: Creating directory structure..."
+mkdir -p "$HTML_DIR"
+echo "✓ Directories created"
+
+echo ""
+echo "Step 2: Creating custom HTML landing page..."
+cat > "$HTML_DIR/index.html" << 'EOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BroTech Labs - Automated Deployment</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 2rem;
+            max-width: 800px;
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.5rem;
+            margin-bottom: 2rem;
+            opacity: 0.9;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 2rem;
+            margin: 2rem 0;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .feature {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 10px;
+            transition: transform 0.3s;
+        }
+        .feature:hover {
+            transform: translateY(-5px);
+        }
+        .emoji {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .footer {
+            margin-top: 2rem;
+            opacity: 0.8;
+            font-size: 0.9rem;
+        }
+        a {
+            color: #fff;
+            text-decoration: none;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+            transition: border-color 0.3s;
+        }
+        a:hover {
+            border-color: rgba(255,255,255,0.8);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Welcome to BroTech Labs</h1>
+        <p class="subtitle">Automated Infrastructure Deployment</p>
+
+        <div class="card">
+            <h2>Successfully Deployed!</h2>
+            <p style="margin-top: 1rem;">
+                This website was automatically deployed using:
+            </p>
+            <div class="features">
+                <div class="feature">
+                    <div class="emoji">☁️</div>
+                    <strong>Cloud-Init</strong>
+                    <p>Server automation</p>
+                </div>
+                <div class="feature">
+                    <div class="emoji">🔧</div>
+                    <strong>Bash Scripts</strong>
+                    <p>Deployment automation</p>
+                </div>
+                <div class="feature">
+                    <div class="emoji">🐳</div>
+                    <strong>Docker</strong>
+                    <p>Containerization</p>
+                </div>
+                <div class="feature">
+                    <div class="emoji">🔒</div>
+                    <strong>SSL/TLS</strong>
+                    <p>Secure connection</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Infrastructure Components</h3>
+            <p style="margin-top: 1rem;">
+                ✅ Nginx Proxy Manager<br>
+                ✅ Custom Nginx Website<br>
+                ✅ Code-Server (VS Code)<br>
+                ✅ SSL Certificates (DNS Challenge)<br>
+                ✅ Automated Deployment
+            </p>
+        </div>
+
+        <div class="footer">
+            <p>Powered by Week 3 Automation Skills 💪</p>
+            <p style="margin-top: 0.5rem;">
+                <a href="https://github.com/yourusername">GitHub</a> •
+                <a href="/code">Code Editor</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+EOF
+echo "✓ HTML landing page created"
+
+echo ""
+echo "Step 3: Creating docker-compose.yml..."
+cat > "$WEBSITE_DIR/docker-compose.yml" << 'EOF'
+version: '3.8'
+
+services:
+  website:
+    image: nginx:alpine
+    container_name: custom-website
+    restart: unless-stopped
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    networks:
+      - web_network
+
+networks:
+  web_network:
+    external: true
+EOF
+echo "✓ Docker Compose file created"
+
+echo ""
+echo "Step 4: Deploying website container..."
+cd "$WEBSITE_DIR"
+docker compose up -d
+echo "✓ Website deployed"
+
+echo ""
+echo "Step 5: Verifying deployment..."
+sleep 3
+if docker ps | grep -q custom-website; then
+    echo "✓ Website container is running"
+else
+    echo "✗ Website container failed to start"
+    exit 1
+fi
+
+echo ""
+echo "=================================="
+echo "Deployment Complete!"
+echo "=================================="
+echo ""
+echo "Website is running on the Docker network."
+echo "Configure NPM to access it at: http://custom-website:80"
+echo ""
+```
+
+Save and exit.
+
+### Step 2: Make Script Executable
+
+`chmod +x /opt/scripts/deploy-website.sh` {{ execute }}
+
+### Step 3: Run Deployment Script
+
+`/opt/scripts/deploy-website.sh` {{ execute }}
+
+You should see each step complete successfully!
+
+### Step 4: Verify Website Container
+
+`docker ps` {{ execute }}
+
+Should show `custom-website` and `nginx-proxy-manager` running.
+
+Test internally:
+
+`curl http://localhost:80` {{ execute }}
+
+Should return HTML content!
+
+---
+
+## Part 7: Deploy Code-Server
+
+### Step 1: Create Config Directory
+
+`cd /opt/code-server` {{ execute }}
+
+### Step 2: Create Docker Compose File
+
+`nano docker-compose.yml` {{ execute }}
+
+```yaml
+version: '3.8'
+
+services:
+  code-server:
+    image: codercom/code-server:latest
+    container_name: code-server
+    restart: unless-stopped
+    environment:
+      PASSWORD: changeme123
+      SUDO_PASSWORD: changeme123
+      PROXY_DOMAIN: code.yourdomain.com
+    volumes:
+      - code-config:/home/coder/.config
+      - code-data:/home/coder/project
+    networks:
+      - web_network
+
+volumes:
+  code-config:
+  code-data:
+
+networks:
+  web_network:
+    external: true
+```
+
+**IMPORTANT:** Change `changeme123` and `yourdomain.com`!
+
+Save and exit.
+
+### Step 3: Deploy Code-Server
+
+`docker compose up -d` {{ execute }}
+
+### Step 4: Verify All Containers
+
+`docker ps --format "table {{.Names}}\t{{.Status}}"` {{ execute }}
+
+Should show all three containers running!
+
+---
+
+## Part 8: Configure SSL with DNS Challenge
+
+Now configure NPM to use Cloudflare DNS challenge for SSL certificates.
+
+### Step 1: Add Cloudflare DNS Provider in NPM
+
+In NPM admin (http://YOUR_SERVER_IP:81):
+
+1. Click "SSL Certificates" (sidebar)
+2. Click "Add SSL Certificate"
+3. Click "Add SSL Certificate" dropdown → "Custom"
+
+Actually, let's use the easier method - configure it when adding proxy hosts.
+
+### Step 2: Add Custom Website Proxy Host
+
+In NPM:
+1. Click "Hosts" → "Proxy Hosts"
+2. Click "Add Proxy Host"
+
+**Details Tab:**
+- Domain Names: `www.yourdomain.com`
+- Scheme: `http`
+- Forward Hostname/IP: `custom-website`
+- Forward Port: `80`
+- ✅ Cache Assets
+- ✅ Block Common Exploits
+
+Click "SSL" tab.
+
+**SSL Tab:**
+- SSL Certificate: "Request a New SSL Certificate"
+- ✅ Force SSL
+- ✅ HTTP/2 Support
+- ✅ Use a DNS Challenge
+
+**DNS Challenge Settings:**
+- DNS Provider: Select "Cloudflare"
+- Credentials File Content:
+
+```
+dns_cloudflare_api_token = YOUR_CLOUDFLARE_API_TOKEN
+```
+
+Replace YOUR_CLOUDFLARE_API_TOKEN with your actual token from Part 4.
+
+- Email: your-email@example.com
+- ✅ I Agree to Let's Encrypt ToS
+
+Click "Save"
+
+NPM will:
+1. Contact Let's Encrypt
+2. Create DNS TXT record via Cloudflare API
+3. Verify ownership
+4. Issue certificate
+5. Install it
+
+This takes 1-2 minutes.
+
+### Step 3: Test Your Website
+
+Open browser: `https://www.yourdomain.com`
+
+You should see:
+- 🔒 Secure connection (green padlock)
+- Your beautiful custom landing page!
+- SSL certificate valid
+
+**Success!** 🎉
+
+---
+
+## Part 9: Add Code-Server with SSL
+
+### Step 1: Add Code-Server Proxy Host
+
+In NPM, "Hosts" → "Proxy Hosts" → "Add Proxy Host"
+
+**Details Tab:**
+- Domain Names: `code.yourdomain.com`
+- Scheme: `http`
+- Forward Hostname/IP: `code-server`
+- Forward Port: `8080`
+- ✅ Cache Assets
+- ✅ Block Common Exploits
+- ✅ **Websockets Support** (critical!)
+
+**SSL Tab:**
+- SSL Certificate: "Request a New SSL Certificate"
+- ✅ Force SSL
+- ✅ HTTP/2 Support
+- ✅ Use a DNS Challenge
+- DNS Provider: Cloudflare
+- Credentials:
+
+```
+dns_cloudflare_api_token = YOUR_CLOUDFLARE_API_TOKEN
+```
+
+- Email: your-email@example.com
+- ✅ I Agree
+
+Click "Save"
+
+### Step 2: Test Code-Server
+
+Open browser: `https://code.yourdomain.com`
+
+Should show:
+- 🔒 Secure connection
+- Code-Server login
+- Working editor after login
+
+---
+
+## Part 10: Add NPM Admin with SSL
+
+### Step 1: Add NPM Proxy Host
+
+In NPM, "Hosts" → "Proxy Hosts" → "Add Proxy Host"
+
+**Details Tab:**
+- Domain Names: `npm.yourdomain.com`
+- Scheme: `http`
+- Forward Hostname/IP: `nginx-proxy-manager`
+- Forward Port: `81`
+- ✅ Block Common Exploits
+
+**SSL Tab:**
+- Request a New SSL Certificate
+- ✅ Force SSL
+- ✅ HTTP/2 Support
+- ✅ Use a DNS Challenge
+- DNS Provider: Cloudflare
+- Credentials: (same token)
+- Email: your-email@example.com
+- ✅ I Agree
+
+Click "Save"
+
+### Step 2: Access via HTTPS
+
+Browser: `https://npm.yourdomain.com`
+
+All three services now have SSL via DNS challenge! 🔒🔒🔒
+
+---
+
+## Part 11: Verification
+
+Let's verify everything works.
+
+### Check All Containers
+
+`docker ps --format "table {{.Names}}\t{{.Status}}"` {{ execute }}
+
+All three should show "Up":
+- nginx-proxy-manager
+- custom-website
+- code-server
+
+### Check Networks
+
+`docker network inspect web_network --format '{{range .Containers}}{{.Name}} {{end}}'` {{ execute }}
+
+Should list all containers.
+
+### Test All Services
+
+**Custom Website:** `https://www.yourdomain.com`
+- ✅ Loads your landing page
+- ✅ SSL certificate valid
+- ✅ Deployed via bash script
+
+**Code-Server:** `https://code.yourdomain.com`
+- ✅ VS Code interface
+- ✅ SSL certificate valid
+- ✅ WebSockets working
+
+**NPM Admin:** `https://npm.yourdomain.com`
+- ✅ Admin interface
+- ✅ SSL certificate valid
+- ✅ Managing all services
+
+---
+
+## Part 12: Understanding What You Built
+
+Let's review the automation:
+
+### Cloud-Init Automated (5 minutes):
+- ✅ Updated system packages
+- ✅ Installed Docker
+- ✅ Created user with SSH key
+- ✅ Configured firewall
+- ✅ Created Docker network
+- ✅ Set up all directories
+
+### Bash Script Automated (2 minutes):
+- ✅ Created custom HTML landing page
+- ✅ Generated docker-compose.yml
+- ✅ Deployed nginx container
+- ✅ Verified deployment
+
+### You Did Manually (25 minutes):
+- Created docker-compose for NPM
+- Deployed NPM
+- Created docker-compose for Code-Server
+- Deployed Code-Server
+- Configured DNS
+- Configured NPM proxy hosts with DNS challenge SSL
+
+### Total Time: ~35 minutes
+
+**Manual (without automation): 3+ hours**
+
+**Time saved: 2.5+ hours!**
+
+---
+
+## Part 13: Why DNS Challenge?
+
+You used DNS challenge instead of HTTP challenge. Here's why:
+
+**HTTP Challenge:**
+- Requires port 80 accessible
+- Let's Encrypt makes HTTP request to your domain
+- Simple but requires public access
+- One challenge per certificate
+
+**DNS Challenge:**
+- Works without public access
+- Creates TXT record in DNS
+- Can create wildcard certificates (*.yourdomain.com)
+- Works behind firewalls
+- More flexible
+
+**Benefits for you:**
+- Same Cloudflare API token works for all domains
+- Can automate certificate renewal
+- Can get certs before server is public
+- More professional approach
+
+---
+
+## Part 14: Customizing Your Website
+
+Want to customize the landing page?
+
+### Method 1: Edit Directly
+
+`nano /opt/website/html/index.html` {{ execute }}
+
+Make changes, save, then:
+
+`docker restart custom-website` {{ execute }}
+
+Refresh browser to see changes!
+
+### Method 2: Edit via Code-Server
+
+1. Go to `https://code.yourdomain.com`
+2. Open folder: `/opt/website/html/`
+3. Edit `index.html`
+4. Save
+5. Restart container: `docker restart custom-website`
+
+### Ideas for Customization:
+- Change colors and gradients
+- Add your photo
+- Link to your GitHub/LinkedIn
+- Add project portfolio
+- Change text content
+- Add more pages
+
+---
+
+## Part 15: Troubleshooting
+
+### Container won't start:
+
+`docker logs custom-website` {{ execute }}
+
+`docker logs nginx-proxy-manager` {{ execute }}
+
+`docker logs code-server` {{ execute }}
+
+### DNS challenge fails:
+
+Check Cloudflare API token:
+- Token has DNS edit permissions
+- Zone ID is correct
+- Token hasn't expired
+
+Test DNS:
+
+`nslookup www.yourdomain.com` {{ execute }}
+
+### Website not loading:
+
+Check container:
+
+`docker ps | grep custom-website` {{ execute }}
+
+Test internally:
+
+`docker exec nginx-proxy-manager curl http://custom-website:80` {{ execute }}
+
+### Can't access from internet:
+
+Check firewall:
+
+`sudo ufw status` {{ execute }}
+
+Check NPM proxy host configuration.
+
+---
+
+## Part 16: Cleanup
+
+When done, clean up to avoid charges.
+
+### Stop all containers:
+
+`cd /opt/npm && docker compose down` {{ execute }}
+
+`cd /opt/code-server && docker compose down` {{ execute }}
+
+`cd /opt/website && docker compose down` {{ execute }}
+
+### Delete server:
+
+In Hetzner Cloud Console:
+1. Select server
+2. Click "Delete"
+3. Confirm
+
+### Remove DNS records:
+
+In Cloudflare:
+- Remove A records for npm, code, www
+
+---
+
+## What You Accomplished
+
+Congratulations! You just:
+
+✅ Automated server setup with cloud-init
+✅ Created custom website deployment with bash script
+✅ Built custom HTML landing page
+✅ Deployed three containers automatically
+✅ Configured reverse proxy
+✅ Automated SSL with DNS challenge
+✅ Used Cloudflare API for automation
+✅ Created reproducible infrastructure
+✅ Saved 2.5+ hours of manual work
+
+---
+
+## Skills You Gained
+
+**Technical:**
+- Cloud-init configuration
+- Bash scripting for deployment
+- Docker Compose orchestration
+- Nginx web server
+- HTML/CSS basics
+- Reverse proxy setup
+- DNS challenge SSL/TLS
+- Cloudflare API integration
+- Container networking
+- Infrastructure as Code
+
+**Professional:**
+- DevOps fundamentals
+- Automation practices
+- API credential management
+- Security best practices
+- Reproducible deployments
+
+---
+
+## Next Steps
+
+**Practice:**
+- Customize your landing page
+- Add more containers
+- Try different HTML/CSS designs
+- Deploy a real application
+
+**Build On It:**
+- Add a database (PostgreSQL)
+- Deploy WordPress or Ghost
+- Set up monitoring
+- Create multiple environments
+
+**Learn More:**
+- Terraform (infrastructure automation)
+- Ansible (configuration management)
+- Kubernetes (container orchestration)
+- CI/CD pipelines
+
+---
+
+## Summary
+
+**What you learned:**
+- Cloud-init automates OS setup
+- Bash scripts create and deploy applications
+- Docker containers for services
+- DNS challenge for SSL automation
+- API integration for automation
+- Infrastructure as Code principles
+
+**Time investment:**
+- Learning: 2-3 hours
+- First deployment: 45 min
+- Future deployments: <30 minutes
+
+**Career value:**
+- Entry-level DevOps skills ✅
+- Cloud engineering fundamentals ✅
+- Automation best practices ✅
+- Production-ready knowledge ✅
+- Portfolio-worthy project ✅
+
+You're now ready for Junior DevOps roles! 🚀
+
+---
+
+**Previous:** [Lab 2 - Simple Bash Scripts](./02-simple-bash-scripts.mdcl)
+**Home:** [Week 3 Topics](./week3-topics.md)

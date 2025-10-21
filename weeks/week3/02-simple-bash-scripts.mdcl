@@ -1,0 +1,536 @@
+# Simple Bash Scripting Tutorial
+
+Bash scripts are files that contain commands you would normally type in the terminal. Instead of typing them one by one, you put them in a file and run them all at once.
+
+`This tutorial teaches bash scripting basics with simple, practical examples` {{ note }}
+
+---
+
+## What is a Bash Script?
+
+**Bash Script** = A text file containing terminal commands
+
+Think of it like this:
+- You normally type: `ls`, `cd`, `docker ps`
+- With a script: All those commands run automatically
+
+---
+
+## Part 1: Your First Script
+
+Let's create the simplest possible bash script.
+
+### Step 1: Create the Script
+
+`nano hello.sh` {{ execute }}
+
+### Step 2: Add Commands
+
+Paste this:
+
+```bash
+#!/bin/bash
+
+echo "Hello, World!"
+echo "Today is:"
+date
+```
+
+**What each line does:**
+- Line 1: `#!/bin/bash` - Tells the system to use bash
+- Line 3-5: Commands that will run
+
+Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
+
+### Step 3: Make it Executable
+
+`chmod +x hello.sh` {{ execute }}
+
+This gives the file permission to run as a program.
+
+### Step 4: Run It
+
+`./hello.sh` {{ execute }}
+
+You should see:
+```
+Hello, World!
+Today is:
+Sun Oct 20 14:30:00 EDT 2025
+```
+
+**Congratulations! You just wrote and ran a bash script!** 🎉
+
+---
+
+## Part 2: Using Variables
+
+Variables store information you can reuse.
+
+`nano variables.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+NAME="John"
+AGE=25
+CITY="New York"
+
+echo "My name is $NAME"
+echo "I am $AGE years old"
+echo "I live in $CITY"
+```
+
+**Important rules:**
+- No spaces around `=` sign
+- Use `$` to get the value
+
+Make it executable and run:
+
+`chmod +x variables.sh` {{ execute }}
+
+`./variables.sh` {{ execute }}
+
+---
+
+## Part 3: Getting User Input
+
+Let's make a script that asks questions.
+
+`nano greet.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+echo "What is your name?"
+read NAME
+
+echo "What is your favorite color?"
+read COLOR
+
+echo "Hello $NAME! Your favorite color is $COLOR."
+```
+
+Make executable and run:
+
+`chmod +x greet.sh` {{ execute }}
+
+`./greet.sh` {{ execute }}
+
+The script will wait for you to type answers!
+
+---
+
+## Part 4: Making Decisions (if statements)
+
+Scripts can make decisions based on conditions.
+
+`nano check-docker.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+if command -v docker &> /dev/null; then
+    echo "Docker is installed!"
+    docker --version
+else
+    echo "Docker is NOT installed."
+fi
+```
+
+**What this does:**
+- `if` checks if docker command exists
+- `then` runs if docker is found
+- `else` runs if docker is not found
+- `fi` ends the if statement
+
+Make executable and run:
+
+`chmod +x check-docker.sh` {{ execute }}
+
+`./check-docker.sh` {{ execute }}
+
+---
+
+## Part 5: Functions (Reusable Code)
+
+Functions let you group commands together and reuse them.
+
+`nano functions.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+print_header() {
+    echo "================================"
+    echo "  $1"
+    echo "================================"
+}
+
+print_header "System Information"
+echo "Hostname: $(hostname)"
+echo "IP Address: $(hostname -I)"
+
+print_header "Disk Usage"
+df -h /
+
+print_header "Memory Usage"
+free -h
+```
+
+**What this does:**
+- Defines a function called `print_header`
+- `$1` is the first argument passed to the function
+- Function is called 3 times with different headers
+
+Make executable and run:
+
+`chmod +x functions.sh` {{ execute }}
+
+`./functions.sh` {{ execute }}
+
+---
+
+## Part 6: Practical Example - Docker Deployment Script
+
+Let's create a useful script that deploys a container.
+
+`nano deploy-nginx.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+echo "Deploying Nginx container..."
+
+docker run -d \
+  --name my-nginx \
+  --restart unless-stopped \
+  -p 8080:80 \
+  nginx:latest
+
+if [ $? -eq 0 ]; then
+    echo "✓ Nginx deployed successfully!"
+    echo "Access it at: http://localhost:8080"
+else
+    echo "✗ Deployment failed!"
+    exit 1
+fi
+```
+
+**What this does:**
+- Runs nginx container in background (`-d`)
+- Names it `my-nginx`
+- Maps port 8080 to container port 80
+- Checks if command succeeded (`$?` is the exit code)
+- Shows success or error message
+
+Make executable and run:
+
+`chmod +x deploy-nginx.sh` {{ execute }}
+
+`./deploy-nginx.sh` {{ execute }}
+
+Test it works:
+
+`curl http://localhost:8080` {{ execute }}
+
+You should see the Nginx welcome page HTML!
+
+Clean up:
+
+`docker stop my-nginx && docker rm my-nginx` {{ execute }}
+
+---
+
+## Part 7: Loops (Repeating Actions)
+
+Loops let you repeat actions.
+
+### For Loop (iterate over a list):
+
+`nano for-loop.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+echo "Installing packages..."
+
+for package in curl git htop; do
+    echo "Installing $package..."
+    sudo apt install -y $package
+done
+
+echo "All packages installed!"
+```
+
+### While Loop (repeat until condition is false):
+
+`nano wait-for-docker.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+echo "Waiting for Docker to be ready..."
+
+while ! docker info &> /dev/null; do
+    echo "Still waiting..."
+    sleep 2
+done
+
+echo "Docker is ready!"
+```
+
+This script waits until Docker is running before continuing.
+
+---
+
+## Part 8: Error Handling
+
+Good scripts handle errors properly.
+
+`nano safe-script.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+set -e
+
+echo "This script will exit if any command fails"
+
+docker ps
+docker images
+docker network ls
+
+echo "All commands succeeded!"
+```
+
+**What `set -e` does:**
+- Makes script exit immediately if any command fails
+- Prevents broken scripts from continuing
+
+---
+
+## Part 9: Practical Deployment Script
+
+Let's create a real deployment script.
+
+`nano deploy-app.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+set -e
+
+echo "========================================="
+echo "Application Deployment Script"
+echo "========================================="
+
+echo ""
+echo "Step 1: Checking Docker..."
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker not installed!"
+    exit 1
+fi
+echo "✓ Docker is installed"
+
+echo ""
+echo "Step 2: Creating directory..."
+mkdir -p /tmp/myapp
+cd /tmp/myapp
+echo "✓ Directory created"
+
+echo ""
+echo "Step 3: Creating docker-compose.yml..."
+cat > docker-compose.yml << 'EOF'
+version: '3.8'
+
+services:
+  nginx:
+    image: nginx:latest
+    container_name: myapp-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+EOF
+echo "✓ Configuration created"
+
+echo ""
+echo "Step 4: Deploying containers..."
+docker compose up -d
+echo "✓ Deployment complete"
+
+echo ""
+echo "Step 5: Verifying deployment..."
+sleep 3
+docker ps | grep myapp-nginx
+echo "✓ Container is running"
+
+echo ""
+echo "========================================="
+echo "Deployment Successful!"
+echo "Access app at: http://localhost:8080"
+echo "========================================="
+```
+
+Make executable and run:
+
+`chmod +x deploy-app.sh` {{ execute }}
+
+`./deploy-app.sh` {{ execute }}
+
+Clean up when done:
+
+`cd /tmp/myapp && docker compose down` {{ execute }}
+
+---
+
+## Part 10: Script Best Practices
+
+### Always use a shebang:
+
+```bash
+#!/bin/bash
+```
+
+### Use `set -e` for safety:
+
+```bash
+set -e  # Exit on error
+```
+
+### Add comments:
+
+```bash
+# This checks if Docker is installed
+if command -v docker &> /dev/null; then
+```
+
+### Use meaningful variable names:
+
+```bash
+# Good
+SERVER_IP="192.168.1.100"
+
+# Bad
+x="192.168.1.100"
+```
+
+### Check for errors:
+
+```bash
+if [ $? -eq 0 ]; then
+    echo "Success!"
+else
+    echo "Failed!"
+    exit 1
+fi
+```
+
+---
+
+## Part 11: Useful Commands for Scripts
+
+### Check if file exists:
+
+```bash
+if [ -f /path/to/file ]; then
+    echo "File exists"
+fi
+```
+
+### Check if directory exists:
+
+```bash
+if [ -d /path/to/dir ]; then
+    echo "Directory exists"
+fi
+```
+
+### Run command silently:
+
+```bash
+command &> /dev/null
+```
+
+### Get command output:
+
+```bash
+IP=$(hostname -I | awk '{print $1}')
+echo "Server IP: $IP"
+```
+
+### Pause for user input:
+
+```bash
+read -p "Press Enter to continue..."
+```
+
+---
+
+## What You Learned
+
+✅ What bash scripts are
+✅ How to create and run scripts
+✅ Using variables
+✅ Getting user input
+✅ If statements for decisions
+✅ Functions for reusable code
+✅ Loops for repetition
+✅ Error handling
+✅ Creating practical deployment scripts
+✅ Best practices
+
+---
+
+## Practice Exercise
+
+Create a script that:
+1. Checks if Docker is installed
+2. If not, shows an error and exits
+3. If yes, deploys a simple nginx container
+4. Waits 5 seconds
+5. Tests if the container is responding
+6. Shows success message with URL
+
+Try it yourself before looking at the solution!
+
+### Solution:
+
+`nano practice.sh` {{ execute }}
+
+```bash
+#!/bin/bash
+
+set -e
+
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker is required but not installed."
+    exit 1
+fi
+
+echo "Deploying nginx..."
+docker run -d --name practice-nginx -p 8888:80 nginx:latest
+
+echo "Waiting for container to start..."
+sleep 5
+
+echo "Testing container..."
+if curl -s http://localhost:8888 > /dev/null; then
+    echo "✓ Success! Visit: http://localhost:8888"
+else
+    echo "✗ Container not responding"
+    exit 1
+fi
+```
+
+---
+
+## Next Steps
+
+You now know cloud-init and bash scripting basics! Time to combine them.
+
+**Continue to:** [Lab 3 - Automated Deployment](./03-automated-deployment.mdcl)
+
+---
+
+**Remember:** Start simple, test often, and add features gradually. 🚀

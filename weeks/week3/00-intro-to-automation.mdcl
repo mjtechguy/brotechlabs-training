@@ -1,0 +1,696 @@
+# Introduction to Infrastructure Automation
+
+Before we automate everything, let's understand what automation is, why it matters, and how it will save you hours of work.
+
+`This lab compares manual deployment to automation and shows you why automation is essential` {{ note }}
+
+---
+
+## What is Automation?
+
+**Automation** = Using scripts, tools, and configuration files to do tasks automatically instead of manually typing commands.
+
+**Simple analogy:**
+- **Manual**: Like washing dishes by hand, one at a time
+- **Automated**: Like using a dishwasher - load it, press start, walk away
+
+---
+
+## Part 1: The Manual Way (What You Did in Week 2)
+
+Let's review what you did manually in Week 2 to deploy infrastructure.
+
+### Manual Deployment Checklist
+
+Here's every step you did by hand:
+
+**Server Setup (30 minutes):**
+- ☐ Create server in Hetzner
+- ☐ SSH into server
+- ☐ Run `apt update`
+- ☐ Run `apt upgrade -y`
+- ☐ Install prerequisites (curl, ca-certificates, etc.)
+- ☐ Add Docker GPG key
+- ☐ Add Docker repository
+- ☐ Run `apt update` again
+- ☐ Install Docker
+- ☐ Install Docker Compose
+- ☐ Start Docker service
+- ☐ Enable Docker to start on boot
+
+**Firewall Configuration (10 minutes):**
+- ☐ Install UFW
+- ☐ Set default deny incoming
+- ☐ Set default allow outgoing
+- ☐ Allow port 22 (SSH)
+- ☐ Allow port 80 (HTTP)
+- ☐ Allow port 443 (HTTPS)
+- ☐ Allow port 81 (NPM admin)
+- ☐ Enable firewall
+
+**Docker Network (5 minutes):**
+- ☐ Create Docker network
+- ☐ Verify it was created
+
+**Nginx Proxy Manager (20 minutes):**
+- ☐ Create directory `/opt/npm`
+- ☐ Create `docker-compose.yml` file
+- ☐ Type/paste all the YAML configuration
+- ☐ Run `docker compose up -d`
+- ☐ Check if container is running
+- ☐ Access admin interface
+- ☐ Change default credentials
+
+**Code-Server (20 minutes):**
+- ☐ Create directory `/opt/code-server`
+- ☐ Create `docker-compose.yml` file
+- ☐ Type/paste YAML configuration
+- ☐ Run `docker compose up -d`
+- ☐ Verify container is running
+
+**DNS Configuration (10 minutes):**
+- ☐ Log into Cloudflare
+- ☐ Add A record for `npm`
+- ☐ Add A record for `code`
+- ☐ Wait for DNS propagation
+- ☐ Test with nslookup
+
+**NPM Configuration (30 minutes):**
+- ☐ Log into NPM admin
+- ☐ Create proxy host for Code-Server
+- ☐ Configure domain name
+- ☐ Configure forward host/port
+- ☐ Enable websockets
+- ☐ Request SSL certificate
+- ☐ Wait for certificate
+- ☐ Test HTTPS access
+- ☐ Create proxy host for NPM admin
+- ☐ Request another SSL certificate
+
+**Total Time: ~2.5 hours**
+**Total Steps: 40+**
+**Potential for Errors: High**
+
+### The Problems with Manual Deployment
+
+**1. Time-Consuming**
+- Every server takes 2-3 hours
+- Deploy 5 servers = 12-15 hours
+- Deploy 10 servers = 25-30 hours
+
+**2. Error-Prone**
+- Typos in commands
+- Forgot a step
+- Wrong configuration
+- Inconsistent setups
+
+**3. Hard to Replicate**
+- Different team members do it differently
+- Hard to remember every step
+- Changes get lost
+- No documentation
+
+**4. Doesn't Scale**
+- 1 server = 2.5 hours
+- 100 servers = 250 hours (over 6 work weeks!)
+
+**5. Knowledge Silos**
+- Only you know how to set it up
+- New team members need training
+- If you leave, knowledge is lost
+
+---
+
+## Part 2: The Automated Way (What You'll Learn)
+
+Now let's see what automation looks like.
+
+### Two Types of Automation
+
+**1. Cloud-Init (Server Initialization)**
+- Runs automatically when server boots
+- Configures operating system
+- One-time setup
+
+**2. Bash Scripts (Application Deployment)**
+- Runs when you execute it
+- Deploys applications
+- Can run multiple times
+
+---
+
+## Part 3: Real Example - Side by Side Comparison
+
+Let's compare the same task done manually vs automated.
+
+### Task: Install Docker and Configure Firewall
+
+**Manual Method (15 minutes):**
+
+You have to type these commands one by one:
+
+```bash
+# Update packages
+sudo apt update
+sudo apt upgrade -y
+
+# Install prerequisites
+sudo apt install -y apt-transport-https ca-certificates curl
+
+# Add Docker GPG key
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# Add Docker repository
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# Install Docker
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io
+
+# Start Docker
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# Install UFW
+sudo apt install -y ufw
+
+# Configure firewall
+sudo ufw default deny incoming
+sudo ufw default allow outgoing
+sudo ufw allow 22/tcp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw --force enable
+```
+
+**Problems:**
+- 20+ commands to type
+- Easy to make mistakes
+- Have to wait for each command
+- Boring and repetitive
+
+**Automated Method with Cloud-Init (0 minutes of your time):**
+
+You paste this into Hetzner's cloud-init field when creating the server:
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - docker-compose-plugin
+  - ufw
+
+runcmd:
+  - systemctl start docker
+  - systemctl enable docker
+  - ufw default deny incoming
+  - ufw default allow outgoing
+  - ufw allow 22/tcp
+  - ufw allow 80/tcp
+  - ufw allow 443/tcp
+  - ufw --force enable
+```
+
+**Benefits:**
+- Write once, use forever
+- No typing commands
+- No waiting around
+- Automatic when server boots
+- Zero errors
+
+---
+
+## Part 4: What Cloud-Init Does
+
+Cloud-init runs automatically during server boot.
+
+**The Process:**
+
+```
+1. You create server with cloud-init config
+   ↓
+2. Server boots up
+   ↓
+3. Cloud-init starts automatically
+   ↓
+4. Cloud-init reads your YAML file
+   ↓
+5. Cloud-init executes all instructions:
+   - Updates packages
+   - Installs software
+   - Configures firewall
+   - Creates users
+   - Everything you specified!
+   ↓
+6. Server is ready to use
+   ↓
+7. You SSH in and everything is done!
+```
+
+**Time saved: 30-45 minutes per server**
+
+---
+
+## Part 5: What Bash Scripts Do
+
+Bash scripts are files containing commands that run automatically.
+
+### Example: Deploy a Website
+
+**Manual Method (10 minutes):**
+
+```bash
+# Create directory
+mkdir -p /opt/website/html
+
+# Create HTML file
+nano /opt/website/html/index.html
+# ... type or paste content ...
+# Save and exit
+
+# Create docker-compose file
+nano /opt/website/docker-compose.yml
+# ... type or paste content ...
+# Save and exit
+
+# Deploy
+cd /opt/website
+docker compose up -d
+
+# Verify
+docker ps
+```
+
+**Automated Method with Bash Script (30 seconds):**
+
+Create script once: `deploy-website.sh`
+
+```bash
+#!/bin/bash
+
+# Create directory
+mkdir -p /opt/website/html
+
+# Create HTML file automatically
+cat > /opt/website/html/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head><title>My Site</title></head>
+<body><h1>Welcome!</h1></body>
+</html>
+EOF
+
+# Create docker-compose automatically
+cat > /opt/website/docker-compose.yml << 'EOF'
+version: '3.8'
+services:
+  web:
+    image: nginx:alpine
+    volumes:
+      - ./html:/usr/share/nginx/html
+EOF
+
+# Deploy
+cd /opt/website
+docker compose up -d
+
+# Verify
+docker ps
+```
+
+**Then just run:**
+
+```bash
+./deploy-website.sh
+```
+
+**Time saved: 9.5 minutes per deployment**
+
+---
+
+## Part 6: The Power of Combining Both
+
+When you combine cloud-init + bash scripts, magic happens.
+
+### Full Automated Deployment Workflow
+
+**Step 1: Create server with cloud-init (5 min active, 3 min waiting)**
+- Cloud-init automatically:
+  - Updates OS
+  - Installs Docker
+  - Configures firewall
+  - Creates users
+  - Sets up directories
+
+**Step 2: Run deployment script (2 min)**
+- Bash script automatically:
+  - Creates configuration files
+  - Deploys containers
+  - Verifies deployment
+
+**Total time: 10 minutes (7 active + 3 waiting)**
+
+**Manual equivalent: 2.5 hours**
+
+**Time saved: 2 hours 20 minutes (93% reduction!)**
+
+---
+
+## Part 7: Real-World Comparison
+
+Let's see the impact on real scenarios.
+
+### Scenario 1: Single Server
+
+| Method | Time | Commands | Errors |
+|--------|------|----------|--------|
+| Manual | 2.5 hours | 50+ | Common |
+| Automated | 10 min | 1-2 | Rare |
+
+**Savings: 2h 20min per server**
+
+### Scenario 2: 5 Servers
+
+| Method | Time | Commands | Errors |
+|--------|------|----------|--------|
+| Manual | 12.5 hours | 250+ | Very common |
+| Automated | 30 min* | 5 | Rare |
+
+*Servers can be created in parallel
+
+**Savings: 12 hours**
+
+### Scenario 3: 10 Servers
+
+| Method | Time | Commands | Errors |
+|--------|------|----------|--------|
+| Manual | 25 hours | 500+ | Extremely common |
+| Automated | 45 min* | 10 | Rare |
+
+*All created in parallel
+
+**Savings: 24+ hours (3 work days!)**
+
+---
+
+## Part 8: Beyond Time Savings
+
+Automation provides benefits beyond just speed.
+
+### Consistency
+
+**Manual:**
+- Server 1: You install nginx
+- Server 2: Colleague installs apache
+- Server 3: You forget to enable firewall
+- Server 4: Different Docker version
+- Result: Configuration drift, hard to troubleshoot
+
+**Automated:**
+- All servers identical
+- Same software versions
+- Same configuration
+- Same security settings
+- Result: Predictable, reliable infrastructure
+
+### Documentation
+
+**Manual:**
+- Documentation in Word doc (if it exists)
+- Gets outdated quickly
+- People don't read it
+- Instructions unclear
+
+**Automated:**
+- Scripts ARE the documentation
+- Always up to date
+- Executable documentation
+- Can't be wrong (if script works, doc is correct)
+
+### Disaster Recovery
+
+**Manual:**
+- Server crashes
+- Scramble to remember how it was configured
+- Takes hours to rebuild
+- Might miss something
+
+**Automated:**
+- Server crashes
+- Run automation script
+- 10 minutes later: back online
+- Exact same configuration
+
+### Team Collaboration
+
+**Manual:**
+- Only senior person knows the setup
+- Training takes days
+- Knowledge lost when people leave
+
+**Automated:**
+- Anyone can deploy
+- New team members productive immediately
+- Knowledge preserved in code
+
+---
+
+## Part 9: Infrastructure as Code (IaC)
+
+This automation approach is called **Infrastructure as Code**.
+
+### What is Infrastructure as Code?
+
+**Infrastructure as Code (IaC)** = Defining your infrastructure using code/configuration files instead of manual processes.
+
+**Traditional Infrastructure:**
+```
+Servers configured through:
+- Manual commands
+- Click-through wizards
+- Phone calls to IT
+- Paper documentation
+```
+
+**Infrastructure as Code:**
+```
+Servers configured through:
+- YAML files (cloud-init)
+- Bash scripts
+- Version control (git)
+- Code review process
+```
+
+### Benefits of IaC
+
+**1. Version Control**
+- Track changes over time
+- See who changed what
+- Rollback to previous versions
+- Review changes before applying
+
+**2. Testable**
+- Test on dev server first
+- Verify it works
+- Then deploy to production
+- Reduced risk
+
+**3. Reusable**
+- Write once, use many times
+- Share with team
+- Use across projects
+- Build templates
+
+**4. Auditable**
+- Complete history
+- Compliance requirements
+- Security audits
+- Change tracking
+
+---
+
+## Part 10: The Learning Journey
+
+Here's what you'll learn in Week 3.
+
+### Module Progression
+
+**Lab 0 (this lab): Understanding Automation**
+- Why automate
+- Manual vs automated
+- Time savings
+- IaC concepts
+
+**Lab 1: Cloud-Init Basics**
+- YAML syntax
+- Server initialization
+- Package installation
+- User creation
+- Simple examples
+
+**Lab 2: Bash Scripting Basics**
+- Writing scripts
+- Variables and functions
+- Error handling
+- Practical examples
+
+**Lab 3: Complete Automated Deployment**
+- Combine cloud-init + bash
+- Deploy full infrastructure
+- Custom website
+- SSL automation
+- Real-world project
+
+---
+
+## Part 11: Mindset Shift
+
+Automation requires thinking differently.
+
+### Before Automation Mindset
+
+```
+"I need to deploy a server."
+↓
+Open terminal
+↓
+Type commands manually
+↓
+2.5 hours later: done
+↓
+Forget how you did it
+```
+
+### After Automation Mindset
+
+```
+"I need to deploy a server."
+↓
+Run automation script
+↓
+10 minutes later: done
+↓
+Script documents exactly what was done
+```
+
+### The Question Changes
+
+**Before:** "How do I do this task?"
+
+**After:** "How do I automate this task?"
+
+**Professional DevOps:** "How do I automate this so well that I never have to think about it again?"
+
+---
+
+## Part 12: Common Concerns
+
+Let's address common worries about automation.
+
+### "Isn't automation complicated?"
+
+**Truth:** The first time, yes. But:
+- You only write it once
+- Use it hundreds of times
+- Saves you hundreds of hours
+- Gets easier with practice
+
+### "What if my script breaks?"
+
+**Truth:**
+- You know how to do it manually (Week 2!)
+- Scripts can be tested
+- Errors are reproducible
+- Easier to fix than "I forgot what I did"
+
+### "Isn't this only for big companies?"
+
+**Truth:**
+- Solo developers use automation
+- Startups use automation
+- Anyone deploying servers should automate
+- The smaller the team, the more important automation is
+
+### "I'm not a programmer"
+
+**Truth:**
+- Automation scripts are simpler than programming
+- More like recipes than code
+- Copy, paste, modify
+- You can learn this!
+
+---
+
+## Part 13: Career Impact
+
+Automation skills are highly valued.
+
+### Job Titles Using These Skills
+
+- DevOps Engineer
+- Cloud Engineer
+- Site Reliability Engineer (SRE)
+- Systems Administrator
+- Infrastructure Engineer
+- Platform Engineer
+
+### What Employers Look For
+
+**Junior Level:**
+- Understands automation concepts ✓
+- Can write basic scripts ✓
+- Knows cloud-init or similar ✓
+- Familiar with IaC principles ✓
+
+**You'll learn all of this in Week 3!**
+
+### Salary Impact
+
+**Without automation skills:**
+- Manual system administration: $50k-70k
+
+**With automation skills:**
+- Junior DevOps Engineer: $70k-90k
+- DevOps Engineer: $90k-130k
+- Senior DevOps/SRE: $130k-180k
+
+**Automation skills = Career growth**
+
+---
+
+## Summary
+
+**What you learned:**
+- Automation saves massive amounts of time
+- Cloud-init handles server initialization
+- Bash scripts handle application deployment
+- Infrastructure as Code is the professional approach
+- Automation enables consistency, documentation, and scaling
+
+**Time savings:**
+- 1 server: 2h 20min saved
+- 5 servers: 12 hours saved
+- 10 servers: 24+ hours saved
+
+**Career value:**
+- Essential DevOps skill
+- Enables higher-level positions
+- Increases earning potential
+
+---
+
+## Next Steps
+
+Now that you understand WHY automation matters, let's learn HOW to do it!
+
+**Continue to:** [Lab 1 - Simple Cloud-Init](./01-simple-cloud-init.mdcl)
+
+---
+
+Remember: Every hour you spend learning automation will save you hundreds of hours in the future. Let's get started! 🚀
+
+**Home:** [Week 3 Topics](./week3-topics.md)

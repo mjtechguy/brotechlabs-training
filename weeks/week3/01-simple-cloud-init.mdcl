@@ -1,0 +1,367 @@
+# Simple Cloud-Init Tutorial
+
+Cloud-init is a tool that automatically configures a server when it first boots up. Instead of logging in and typing commands manually, you give cloud-init a configuration file and it does the work for you.
+
+`This tutorial shows you the basics of cloud-init with simple examples` {{ note }}
+
+---
+
+## What is Cloud-Init?
+
+**Cloud-Init** = A program that runs automatically when a cloud server starts for the first time.
+
+Think of it like this:
+- You create a server
+- Server boots up
+- Cloud-init runs your configuration
+- Server is ready to use!
+
+All major cloud providers support it (AWS, Google Cloud, Azure, Hetzner, DigitalOcean, etc.)
+
+---
+
+## Part 1: Your First Cloud-Init File
+
+Let's create the simplest possible cloud-init configuration.
+
+### Step 1: Create the File
+
+On your local machine:
+
+`mkdir -p ~/brotech-labs/week3` {{ execute }}
+
+`cd ~/brotech-labs/week3` {{ execute }}
+
+`nano simple-cloud-init.yaml` {{ execute }}
+
+### Step 2: Add Basic Configuration
+
+Paste this into the file:
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - htop
+  - curl
+```
+
+**What this does:**
+- Line 1: `#cloud-config` tells cloud-init this is a config file
+- Lines 3-4: Update all system packages (like running `apt update && apt upgrade`)
+- Lines 6-8: Install two packages (htop and curl)
+
+Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
+
+---
+
+## Part 2: Understanding YAML
+
+Cloud-init uses YAML format. Here are the basic rules:
+
+**Rule 1: Indentation matters**
+- Use 2 spaces (NOT tabs)
+- Items at the same level have the same indentation
+
+**Rule 2: Lists use dashes**
+
+```yaml
+packages:
+  - docker
+  - git
+  - htop
+```
+
+**Rule 3: Key-value pairs use colons**
+
+```yaml
+package_update: true
+timezone: America/New_York
+```
+
+**Rule 4: Comments use #**
+
+```yaml
+# This is a comment
+package_update: true  # This updates packages
+```
+
+---
+
+## Part 3: A More Useful Example
+
+Let's create a cloud-init file that installs Docker.
+
+`nano docker-cloud-init.yaml` {{ execute }}
+
+Paste this:
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - curl
+  - htop
+
+runcmd:
+  - systemctl start docker
+  - systemctl enable docker
+```
+
+**What this does:**
+- Updates system packages
+- Installs Docker, curl, and htop
+- Starts Docker service
+- Enables Docker to start on boot
+
+---
+
+## Part 4: Adding a User
+
+Let's add a user with SSH access.
+
+First, get your SSH public key:
+
+`cat ~/.ssh/id_ed25519.pub` {{ execute }}
+
+Copy the output (it starts with `ssh-ed25519`).
+
+Create a new file:
+
+`nano user-cloud-init.yaml` {{ execute }}
+
+Paste this (replace YOUR_SSH_KEY with your actual key):
+
+```yaml
+#cloud-config
+
+package_update: true
+
+users:
+  - name: admin
+    groups: sudo
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    ssh_authorized_keys:
+      - YOUR_SSH_KEY
+```
+
+**What this does:**
+- Creates user named "admin"
+- Adds them to sudo group (can run admin commands)
+- Sets bash as their shell
+- Allows sudo without password
+- Adds your SSH key (so you can log in)
+
+---
+
+## Part 5: Complete Example
+
+Let's combine everything into one useful cloud-init file.
+
+`nano complete-cloud-init.yaml` {{ execute }}
+
+Paste this (remember to add your SSH key!):
+
+```yaml
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - docker.io
+  - curl
+  - htop
+  - git
+
+users:
+  - name: admin
+    groups: sudo, docker
+    shell: /bin/bash
+    sudo: 'ALL=(ALL) NOPASSWD:ALL'
+    ssh_authorized_keys:
+      - YOUR_SSH_KEY_HERE
+
+runcmd:
+  - systemctl start docker
+  - systemctl enable docker
+  - echo "Setup complete!" > /root/setup-done.txt
+```
+
+**What this does:**
+- Updates packages
+- Installs Docker, curl, htop, git
+- Creates admin user with your SSH key
+- Adds admin to docker group (can use Docker without sudo)
+- Starts Docker
+- Creates a file to confirm setup finished
+
+---
+
+## Part 6: Using Cloud-Init with Hetzner
+
+Now let's actually use this!
+
+### Step 1: Log into Hetzner Cloud
+
+Go to: https://console.hetzner.cloud
+
+### Step 2: Create a Server
+
+Click "Add Server"
+
+**Settings:**
+- Location: Choose closest to you
+- Image: Ubuntu 22.04
+- Type: CX11 (cheapest, fine for testing)
+- Cloud config: Paste your `complete-cloud-init.yaml` content
+- Name: `cloud-init-test`
+
+Click "Create & Buy Now"
+
+### Step 3: Wait for Boot
+
+Server takes about 60-90 seconds to boot and run cloud-init.
+
+Note the IP address shown (example: `65.108.123.45`)
+
+### Step 4: Connect via SSH
+
+Wait 2-3 minutes for cloud-init to finish, then:
+
+`ssh admin@YOUR_SERVER_IP` {{ copy }}
+
+Replace YOUR_SERVER_IP with your actual server IP.
+
+### Step 5: Verify Everything Worked
+
+Check if setup completed:
+
+`cat /root/setup-done.txt` {{ execute }}
+
+Should say "Setup complete!"
+
+Check if Docker is installed:
+
+`docker --version` {{ execute }}
+
+Check your user groups:
+
+`groups` {{ execute }}
+
+Should show: `admin sudo docker`
+
+---
+
+## Part 7: Checking Cloud-Init Status
+
+Cloud-init logs everything it does.
+
+### Check if cloud-init finished:
+
+`cloud-init status` {{ execute }}
+
+Should show: `status: done`
+
+### See what cloud-init did:
+
+`cat /var/log/cloud-init-output.log` {{ execute }}
+
+This shows all commands cloud-init ran.
+
+### Check for errors:
+
+`grep -i error /var/log/cloud-init-output.log` {{ execute }}
+
+If nothing appears, there were no errors!
+
+---
+
+## Part 8: Common Cloud-Init Tasks
+
+Here are more things you can do with cloud-init:
+
+### Set Timezone
+
+```yaml
+timezone: America/New_York
+```
+
+### Configure Firewall
+
+```yaml
+runcmd:
+  - ufw allow 22
+  - ufw allow 80
+  - ufw allow 443
+  - ufw --force enable
+```
+
+### Create Directories
+
+```yaml
+runcmd:
+  - mkdir -p /opt/myapp
+  - chown admin:admin /opt/myapp
+```
+
+### Write a File
+
+```yaml
+write_files:
+  - path: /etc/myconfig.txt
+    content: |
+      This is my config file.
+      It has multiple lines.
+    permissions: '0644'
+```
+
+---
+
+## Part 9: Testing Cloud-Init Locally
+
+You can test cloud-init syntax before deploying:
+
+### Install cloud-init validator:
+
+`sudo apt install cloud-init` {{ copy }}
+
+### Validate your YAML:
+
+`cloud-init schema --config-file complete-cloud-init.yaml` {{ execute }}
+
+If there are no errors, your YAML is valid!
+
+---
+
+## What You Learned
+
+✅ What cloud-init is and how it works
+✅ YAML syntax basics
+✅ How to update packages automatically
+✅ How to install software
+✅ How to create users with SSH access
+✅ How to run commands on first boot
+✅ How to use cloud-init with Hetzner
+✅ How to check if cloud-init worked
+✅ How to troubleshoot issues
+
+---
+
+## Next Steps
+
+Now that you know cloud-init basics, you're ready to learn bash scripting!
+
+**Continue to:** [Lab 2 - Simple Bash Scripts](./02-simple-bash-scripts.mdcl)
+
+---
+
+**Remember:** Keep it simple! Start with basic configurations and add more as you get comfortable. 🚀
